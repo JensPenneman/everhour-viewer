@@ -1,41 +1,65 @@
 # Everhour viewer
 
-A small local NextJS app to view my Everhour timesheets. Replaces an older
-`viewer.html` + `sync.py` pair with a single dev-server.
+A small NextJS app to view Everhour timesheets. Designed to run locally or be
+hosted once — each browser holds its own data and its own API key, nothing is
+shared server-side.
 
 ## What it does
 
-- Pulls profile + the last 78 weeks of timesheets from Everhour (via an
-  internal API route, so the key stays on the server side).
-- Renders a sidebar with all weeks and a detail view per week: KPI cards,
-  daily bar chart, per-ticket totals, and an expandable per-day breakdown.
-- Caches the result in `localStorage` so a refresh doesn't re-fetch.
-- Can also load JSON files exported by the old `sync.py` (drag them onto
-  the "Laden" button).
+- **Per-browser key.** Each visitor pastes their own Everhour API key. It's
+  kept in `localStorage` and forwarded with every sync request via header.
+- **Delta sync.** The client sends the weeks it already has and their
+  approval status. The server skips fetching details for submitted weeks
+  that haven't changed and only pulls new or still-open weeks.
+- **Streamed sync.** Sync responses are NDJSON — profile, plan, then
+  per-week events stream back, so the sidebar fills and the first week
+  becomes visible while the rest is still being fetched.
+- **Local cache.** All data lives in the browser's `localStorage`; nothing
+  is written to the server filesystem.
+- **Downloadable backup.** Export the full cache (profile + all weeks) as
+  a single JSON file via the header menu.
 
 ## Setup
 
 ```bash
 npm install
-cp .env.local.example .env.local
-# edit .env.local: EVERHOUR_API_KEY=...
+cp .env.local.example .env.local   # optional — see "API key" below
 npm run dev
 ```
 
-Then open <http://localhost:3000>.
+Open <http://localhost:3000> and paste your key on the welcome screen.
 
-You can also leave `.env.local` empty and paste a key at runtime via the
-"API-sleutel" button — it lives in `localStorage` and is forwarded to the
-sync route via header.
+## API key
+
+There are two ways to supply a key:
+
+1. **In the browser** (recommended for any non-local use): click *API-sleutel*
+   in the header menu. The value lives in `localStorage` only and is sent
+   with each `/api/sync` request via the `x-everhour-key` header.
+2. **In `.env.local`**: set `EVERHOUR_API_KEY=...`. The server uses this as
+   a fallback when no browser-supplied key is present. Convenient for local
+   dev; do **not** ship this on a public deploy.
+
+Get a key at <https://app.everhour.com/account#api>.
 
 ## Keyboard
 
 - `↑` / `k` — previous week
 - `↓` / `j` — next week
 
-## Notes
+## Architecture sketch
 
-- API key is never written to disk by the app and never sent to the browser
-  (when sourced from `.env.local`).
-- `.env.local` is gitignored.
-- There's no production deploy — this is a local-only tool.
+```
+browser localStorage  ──knownWeeks──▶  POST /api/sync  ──▶  Everhour API
+       ◀────────── NDJSON stream (profile, plan, week×N, done) ──────────
+```
+
+Each NDJSON event is consumed as it arrives — see `app/Viewer.tsx`. The
+server-side sync orchestration is in `app/api/sync/route.ts`; the Everhour
+HTTP wrapper and data shape live in `lib/everhour.ts`.
+
+## Screenshots
+
+`npm run shoot` (after starting the dev server) drives the app through its
+empty, sync-in-progress, and post-sync states with headless Chrome and
+saves PNGs to `screenshots/`.

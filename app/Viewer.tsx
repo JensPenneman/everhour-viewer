@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import type { EverhourProfile, SyncPayload, WeekRecord } from "@/lib/everhour";
+import type { EverhourProfile, WeekDay, WeekRecord } from "@/lib/everhour";
 
 const STORAGE_KEY = "everhour_viewer_data_v1";
 const KEY_STORAGE = "everhour_api_key";
@@ -29,36 +29,55 @@ const statusLabel: Record<string, string> = {
   unsubmitted: "open",
 };
 
+type Toast = { id: number; msg: string; kind?: "good" | "error" };
+type View = "empty" | "profile" | "week";
+
+type Cache = { profile: EverhourProfile | null; weeks: WeekRecord[] };
+
+type SyncEvent =
+  | { type: "profile"; profile: EverhourProfile }
+  | { type: "plan"; total: number; toFetch: number; toSkip: number }
+  | { type: "week"; week: WeekRecord; current: number; total: number; kind: "new" | "updated" }
+  | { type: "skip"; isoWeek: string }
+  | { type: "done"; counts: { new: number; updated: number; skipped: number; totalWeeks: number } }
+  | { type: "error"; message: string; status?: number };
+
+type SyncProgress = {
+  phase: "connecting" | "profile" | "list" | "weeks" | "done";
+  current: number;
+  total: number;
+  message: string;
+  counts?: { new: number; updated: number; skipped: number };
+};
+
 function StatusPill({ status }: { status: string }) {
   return <span className={`status-pill ${status}`}>{statusLabel[status] ?? status}</span>;
 }
-
-type Toast = { id: number; msg: string; kind?: "good" | "error" };
-type View = "empty" | "profile" | "week";
 
 export default function Viewer() {
   const [profile, setProfile] = useState<EverhourProfile | null>(null);
   const [weeks, setWeeks] = useState<WeekRecord[]>([]);
   const [view, setView] = useState<View>("empty");
   const [activeIso, setActiveIso] = useState<string | null>(null);
-  const [syncing, setSyncing] = useState(false);
-  const [progress, setProgress] = useState<string | null>(null);
+  const [progress, setProgress] = useState<SyncProgress | null>(null);
   const [toasts, setToasts] = useState<Toast[]>([]);
   const [keyDialogOpen, setKeyDialogOpen] = useState(false);
   const [hasEnvKey, setHasEnvKey] = useState<boolean | null>(null);
+  const [hasUserKey, setHasUserKey] = useState<boolean>(false);
+  const [menuOpen, setMenuOpen] = useState(false);
   const pickerRef = useRef<HTMLInputElement>(null);
 
   const toast = useCallback((msg: string, kind?: "good" | "error") => {
     const id = Date.now() + Math.random();
     setToasts((t) => [...t, { id, msg, kind }]);
-    setTimeout(() => setToasts((t) => t.filter((x) => x.id !== id)), kind === "error" ? 5000 : 2500);
+    setTimeout(() => setToasts((t) => t.filter((x) => x.id !== id)), kind === "error" ? 5500 : 2500);
   }, []);
 
   useEffect(() => {
     try {
       const raw = localStorage.getItem(STORAGE_KEY);
       if (raw) {
-        const data = JSON.parse(raw) as SyncPayload;
+        const data = JSON.parse(raw) as Cache;
         if (data.profile) setProfile(data.profile);
         if (Array.isArray(data.weeks)) setWeeks(data.weeks);
         if (data.weeks?.length) {
@@ -72,7 +91,11 @@ export default function Viewer() {
     } catch {
       // ignore corrupted cache
     }
-    fetch("/api/sync").then((r) => r.json()).then((d: { hasEnvKey: boolean }) => setHasEnvKey(d.hasEnvKey)).catch(() => setHasEnvKey(false));
+    setHasUserKey(!!localStorage.getItem(KEY_STORAGE));
+    fetch("/api/sync")
+      .then((r) => r.json())
+      .then((d: { hasEnvKey: boolean }) => setHasEnvKey(d.hasEnvKey))
+      .catch(() => setHasEnvKey(false));
   }, []);
 
   const persist = useCallback((p: EverhourProfile | null, w: WeekRecord[]) => {
@@ -90,14 +113,19 @@ export default function Viewer() {
     [sortedWeeks, activeIso],
   );
 
-  async function runSync() {
-    const overrideKey = localStorage.getItem(KEY_STORAGE)?.trim();
-    if (!overrideKey && hasEnvKey === false) {
+  const canSync = hasUserKey || hasEnvKey === true;
+
+  async function runSync(force = false) {
+    if (!canSync) {
       setKeyDialogOpen(true);
       return;
     }
-    setSyncing(true);
-    setProgress("Verbinden met Everhour…");
+    const overrideKey = localStorage.getItem(KEY_STORAGE)?.trim();
+    setProgress({ phase: "connecting", current: 0, total: 0, message: "Verbinden met Everhour…" });
+
+    let mergedProfile: EverhourProfile | null = profile;
+    const mergedMap = new Map<string, WeekRecord>(weeks.map((w) => [w.week.isoWeek, w]));
+
     try {
       const resp = await fetch("/api/sync", {
         method: "POST",
@@ -105,40 +133,142 @@ export default function Viewer() {
           "Content-Type": "application/json",
           ...(overrideKey ? { "x-everhour-key": overrideKey } : {}),
         },
-        body: JSON.stringify({ weeksBack: 78 }),
+        body: JSON.stringify({
+          weeksBack: 78,
+          force,
+          knownWeeks: weeks.map((w) => ({ isoWeek: w.week.isoWeek, status: w.approval.status })),
+        }),
       });
-      const json = (await resp.json()) as SyncPayload | { error: string };
-      if (!resp.ok || "error" in json) {
-        throw new Error("error" in json ? json.error : `HTTP ${resp.status}`);
+
+      if (!resp.ok || !resp.body) {
+        let errMsg = `HTTP ${resp.status}`;
+        try {
+          const j = await resp.json();
+          if (j?.error === "no_api_key") errMsg = "Geen API-sleutel ingesteld.";
+          else if (j?.error) errMsg = j.error;
+        } catch {}
+        throw new Error(errMsg);
       }
-      setProfile(json.profile);
-      setWeeks(json.weeks);
-      persist(json.profile, json.weeks);
-      if (json.weeks.length) {
-        const sorted = [...json.weeks].sort((a, b) => b.week.from.localeCompare(a.week.from));
-        setActiveIso(sorted[0].week.isoWeek);
-        setView("week");
-      } else {
+
+      const reader = resp.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = "";
+      let counts = { new: 0, updated: 0, skipped: 0 };
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split("\n");
+        buffer = lines.pop() ?? "";
+        for (const line of lines) {
+          if (!line.trim()) continue;
+          let event: SyncEvent;
+          try {
+            event = JSON.parse(line) as SyncEvent;
+          } catch {
+            continue;
+          }
+          if (event.type === "profile") {
+            mergedProfile = event.profile;
+            setProfile(event.profile);
+            setProgress({ phase: "list", current: 0, total: 0, message: `Hallo ${event.profile.name} — weekoverzicht ophalen…` });
+          } else if (event.type === "plan") {
+            counts = { ...counts, skipped: event.toSkip };
+            if (event.toFetch === 0) {
+              setProgress({ phase: "weeks", current: 0, total: 0, message: `Niets nieuw — ${event.toSkip} weken al up-to-date.`, counts });
+            } else {
+              setProgress({ phase: "weeks", current: 0, total: event.toFetch, message: `${event.toFetch} weken te verwerken (${event.toSkip} overgeslagen).`, counts });
+            }
+          } else if (event.type === "week") {
+            const isFirstWeek = mergedMap.size === 0 && weeks.length === 0;
+            mergedMap.set(event.week.week.isoWeek, event.week);
+            counts = {
+              ...counts,
+              new: counts.new + (event.kind === "new" ? 1 : 0),
+              updated: counts.updated + (event.kind === "updated" ? 1 : 0),
+            };
+            setWeeks([...mergedMap.values()]);
+            if (isFirstWeek) {
+              setActiveIso(event.week.week.isoWeek);
+              setView("week");
+            }
+            setProgress({
+              phase: "weeks",
+              current: event.current,
+              total: event.total,
+              message: `Week ${event.current}/${event.total}: ${event.week.week.isoWeek} (${fmtH(event.week.totals.seconds)}u)`,
+              counts,
+            });
+          } else if (event.type === "done") {
+            setProgress({ phase: "done", current: counts.new + counts.updated, total: counts.new + counts.updated, message: "Klaar.", counts: event.counts });
+          } else if (event.type === "error") {
+            throw new Error(event.message);
+          }
+        }
+      }
+
+      const finalWeeks = [...mergedMap.values()];
+      setWeeks(finalWeeks);
+      persist(mergedProfile, finalWeeks);
+      if (finalWeeks.length) {
+        const sorted = [...finalWeeks].sort((a, b) => b.week.from.localeCompare(a.week.from));
+        setActiveIso((cur) => cur ?? sorted[0].week.isoWeek);
+        setView((cur) => (cur === "empty" ? "week" : cur));
+      } else if (mergedProfile) {
         setView("profile");
       }
-      toast(`Sync klaar: ${json.weeks.length} weken geladen.`, "good");
+      const summary = `${counts.new} nieuw · ${counts.updated} bijgewerkt · ${counts.skipped} ongewijzigd`;
+      toast(`Sync klaar — ${summary}`, "good");
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e);
       toast("Sync mislukt: " + msg, "error");
     } finally {
-      setSyncing(false);
-      setProgress(null);
+      setTimeout(() => setProgress(null), 1500);
     }
   }
 
   function clearAll() {
-    if (!confirm("Lokale gegevens wissen?")) return;
+    if (!confirm("Lokale gegevens wissen? Je API-sleutel blijft bewaard.")) return;
     localStorage.removeItem(STORAGE_KEY);
     setProfile(null);
     setWeeks([]);
     setActiveIso(null);
     setView("empty");
     toast("Cache gewist", "good");
+  }
+
+  function downloadBackup() {
+    if (!profile && weeks.length === 0) {
+      toast("Niets om te exporteren", "error");
+      return;
+    }
+    const payload = {
+      schemaVersion: 1 as const,
+      exportedAt: new Date().toISOString(),
+      profile,
+      weeks: sortedWeeks,
+      index: sortedWeeks.map((w) => ({
+        isoWeek: w.week.isoWeek,
+        weekId: w.week.weekId,
+        from: w.week.from,
+        to: w.week.to,
+        hours: w.totals.hours,
+        status: w.approval.status,
+        submittedAt: w.approval.submittedAt,
+      })),
+    };
+    const json = JSON.stringify(payload, null, 2);
+    const blob = new Blob([json], { type: "application/json" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `everhour-backup-${new Date().toISOString().slice(0, 10)}.json`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
+    toast(`Backup gedownload (${weeks.length} weken)`, "good");
   }
 
   async function loadFiles(files: FileList | File[]) {
@@ -217,35 +347,119 @@ export default function Viewer() {
     return () => window.removeEventListener("keydown", onKey);
   }, [view, activeIso, sortedWeeks]);
 
+  useEffect(() => {
+    if (!menuOpen) return;
+    function onDown(e: MouseEvent) {
+      const t = e.target as HTMLElement;
+      if (!t.closest("[data-menu]")) setMenuOpen(false);
+    }
+    window.addEventListener("mousedown", onDown);
+    return () => window.removeEventListener("mousedown", onDown);
+  }, [menuOpen]);
+
   const totalHours = useMemo(() => weeks.reduce((acc, w) => acc + w.totals.seconds, 0) / 3600, [weeks]);
-  const headerSub = profile
-    ? `${profile.name} — ${weeks.length} ${weeks.length === 1 ? "week" : "weken"}, ${totalHours.toFixed(1)}u`
-    : weeks.length
-      ? `${weeks.length} weken, ${totalHours.toFixed(1)}u`
-      : "Geen gegevens geladen";
+  const syncing = progress !== null && progress.phase !== "done";
+  const showEmpty = !profile && weeks.length === 0;
 
   return (
-    <div className="h-screen flex flex-col overflow-hidden">
-      <header className="px-5 py-3 bg-[var(--panel)] border-b border-[var(--border)] flex items-center gap-4">
-        <h1 className="m-0 text-base font-semibold">
-          Everhour viewer <span className="text-[11px] text-[var(--muted-soft)] font-normal ml-1.5">NextJS</span>
-        </h1>
-        <span className="text-[var(--muted)] text-[13px]">{progress ?? headerSub}</span>
-        <span className="flex-1" />
+    <div className="h-screen flex flex-col overflow-hidden bg-[var(--background)]">
+      <header className="px-5 h-14 bg-[var(--panel)] border-b border-[var(--border)] flex items-center gap-3 flex-shrink-0">
+        <div className="flex items-center gap-2.5">
+          <Logo />
+          <span className="font-semibold text-[15px] tracking-tight">Everhour viewer</span>
+        </div>
+
+        <div className="flex-1 min-w-0 px-4">
+          {progress ? (
+            <ProgressBar progress={progress} />
+          ) : (
+            <span className="text-[var(--muted)] text-[13px] truncate">
+              {profile
+                ? `${profile.name} · ${weeks.length} ${weeks.length === 1 ? "week" : "weken"} · ${totalHours.toFixed(1)}u totaal`
+                : weeks.length
+                  ? `${weeks.length} weken · ${totalHours.toFixed(1)}u totaal`
+                  : "Geen gegevens geladen"}
+            </span>
+          )}
+        </div>
+
         <input
           ref={pickerRef}
           type="file"
           multiple
           accept=".json"
+          aria-label="Laad een eerder gedownloade backup"
           className="hidden"
           onChange={(e) => e.target.files && loadFiles(e.target.files)}
         />
-        <Button onClick={() => pickerRef.current?.click()}>Laden</Button>
-        <Button onClick={() => setKeyDialogOpen(true)}>API-sleutel</Button>
-        <Button primary disabled={syncing} onClick={runSync}>
+
+        <Button
+          primary
+          disabled={syncing || !canSync}
+          onClick={() => runSync(false)}
+          title={!canSync ? "Stel eerst een API-sleutel in" : "Haal nieuwe en gewijzigde weken op"}
+        >
           {syncing ? "Bezig…" : "Synchroniseer"}
         </Button>
-        {(profile || weeks.length > 0) && <Button onClick={clearAll}>Wissen</Button>}
+
+        <div className="relative" data-menu>
+          <Button onClick={() => setMenuOpen((o) => !o)} aria-label="Menu">
+            <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5">
+              <circle cx="3" cy="8" r="1.2" fill="currentColor" />
+              <circle cx="8" cy="8" r="1.2" fill="currentColor" />
+              <circle cx="13" cy="8" r="1.2" fill="currentColor" />
+            </svg>
+          </Button>
+          {menuOpen && (
+            <div className="absolute right-0 top-full mt-1.5 min-w-[220px] bg-[var(--panel)] border border-[var(--border)] rounded-lg shadow-lg z-40 py-1.5 overflow-hidden">
+              <MenuItem
+                onClick={() => {
+                  setMenuOpen(false);
+                  runSync(true);
+                }}
+                disabled={!canSync || syncing}
+              >
+                Forceer volledige sync
+              </MenuItem>
+              <MenuItem
+                onClick={() => {
+                  setMenuOpen(false);
+                  downloadBackup();
+                }}
+                disabled={!profile && weeks.length === 0}
+              >
+                Backup downloaden
+              </MenuItem>
+              <MenuItem
+                onClick={() => {
+                  setMenuOpen(false);
+                  pickerRef.current?.click();
+                }}
+              >
+                Backup laden…
+              </MenuItem>
+              <MenuDivider />
+              <MenuItem
+                onClick={() => {
+                  setMenuOpen(false);
+                  setKeyDialogOpen(true);
+                }}
+              >
+                API-sleutel{hasUserKey ? " wijzigen" : " instellen"}
+              </MenuItem>
+              <MenuItem
+                onClick={() => {
+                  setMenuOpen(false);
+                  clearAll();
+                }}
+                danger
+                disabled={!profile && weeks.length === 0}
+              >
+                Cache wissen
+              </MenuItem>
+            </div>
+          )}
+        </div>
       </header>
 
       <div className="flex flex-1 overflow-hidden">
@@ -260,13 +474,21 @@ export default function Viewer() {
           }}
           onSelectProfile={() => setView("profile")}
         />
-        <main className="flex-1 overflow-y-auto px-9 py-7">
-          {view === "profile" && profile ? (
-            <ProfileDetail profile={profile} />
+        <main className="flex-1 overflow-y-auto">
+          {showEmpty ? (
+            <Welcome
+              hasUserKey={hasUserKey}
+              hasEnvKey={hasEnvKey === true}
+              onEnterKey={() => setKeyDialogOpen(true)}
+              onSync={() => runSync(false)}
+              onLoad={() => pickerRef.current?.click()}
+            />
+          ) : view === "profile" && profile ? (
+            <div className="px-9 py-7"><ProfileDetail profile={profile} /></div>
           ) : view === "week" && activeWeek ? (
-            <WeekDetail week={activeWeek} />
+            <div className="px-9 py-7"><WeekDetail week={activeWeek} /></div>
           ) : (
-            <Empty onLoad={() => pickerRef.current?.click()} onSync={runSync} />
+            <div className="px-9 py-7 text-[var(--muted)]">Selecteer een week in de zijbalk.</div>
           )}
         </main>
       </div>
@@ -275,7 +497,7 @@ export default function Viewer() {
         {toasts.map((t) => (
           <div
             key={t.id}
-            className={`px-4 py-2.5 rounded-lg text-[13px] text-white shadow-lg max-w-sm ${
+            className={`px-4 py-2.5 rounded-lg text-[13px] text-white shadow-lg max-w-sm animate-fade-in ${
               t.kind === "error" ? "bg-[var(--bad)]" : t.kind === "good" ? "bg-[var(--good)]" : "bg-[var(--foreground)]"
             }`}
           >
@@ -286,13 +508,50 @@ export default function Viewer() {
 
       {keyDialogOpen && (
         <KeyDialog
-          hasEnvKey={hasEnvKey}
+          hasEnvKey={hasEnvKey === true}
           onClose={() => setKeyDialogOpen(false)}
-          onSaved={() => {
+          onSaved={(value) => {
             setKeyDialogOpen(false);
-            toast("API-sleutel opgeslagen", "good");
+            setHasUserKey(!!value);
+            toast(value ? "API-sleutel opgeslagen" : "API-sleutel verwijderd", "good");
           }}
         />
+      )}
+    </div>
+  );
+}
+
+function Logo() {
+  return (
+    <svg width="22" height="22" viewBox="0 0 22 22" fill="none" aria-hidden="true">
+      <circle cx="11" cy="11" r="9" stroke="var(--accent)" strokeWidth="1.6" />
+      <path d="M11 6V11L14.5 13" stroke="var(--accent)" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  );
+}
+
+function ProgressBar({ progress }: { progress: SyncProgress }) {
+  const pct = progress.total > 0 ? Math.round((progress.current / progress.total) * 100) : progress.phase === "done" ? 100 : 0;
+  const indeterminate = progress.total === 0 && progress.phase !== "done";
+  return (
+    <div className="flex items-center gap-3">
+      <div className="text-[12px] text-[var(--muted)] truncate min-w-0 flex-shrink-0 max-w-[420px]">{progress.message}</div>
+      <div className="relative flex-1 h-1.5 bg-[var(--border)] rounded-full overflow-hidden max-w-[280px]">
+        {indeterminate ? (
+          <div className="absolute inset-y-0 w-1/3 bg-[var(--accent)] rounded-full animate-progress-indeterminate" />
+        ) : (
+          <div
+            className="absolute inset-y-0 left-0 bg-[var(--accent)] rounded-full transition-all duration-200"
+            style={{ width: `${pct}%` }}
+          />
+        )}
+      </div>
+      {progress.counts && (
+        <div className="text-[11px] text-[var(--muted)] tabular-nums whitespace-nowrap">
+          <span className="text-[var(--good)] font-medium">{progress.counts.new}</span> nieuw ·{" "}
+          <span className="text-[var(--accent)] font-medium">{progress.counts.updated}</span> bijgewerkt ·{" "}
+          <span>{progress.counts.skipped}</span> ongewijzigd
+        </div>
       )}
     </div>
   );
@@ -303,20 +562,148 @@ function Button({
   onClick,
   primary,
   disabled,
+  title,
+  small,
+  ...rest
 }: {
   children: React.ReactNode;
   onClick?: () => void;
   primary?: boolean;
   disabled?: boolean;
+  title?: string;
+  small?: boolean;
+  "aria-label"?: string;
 }) {
-  const base = "px-3.5 py-2 rounded-md text-[13px] font-medium border transition-colors disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer";
+  const base = `${small ? "px-2.5 py-1 text-[12px]" : "px-3 py-1.5 text-[13px]"} rounded-md font-medium border transition-colors disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer inline-flex items-center gap-1.5`;
   const styles = primary
     ? `${base} bg-[var(--accent)] text-white border-[var(--accent)] hover:brightness-110`
     : `${base} bg-[var(--panel)] border-[var(--border)] hover:bg-[var(--hover)]`;
   return (
-    <button type="button" onClick={onClick} disabled={disabled} className={styles}>
+    <button type="button" onClick={onClick} disabled={disabled} className={styles} title={title} {...rest}>
       {children}
     </button>
+  );
+}
+
+function MenuItem({
+  children,
+  onClick,
+  disabled,
+  danger,
+}: {
+  children: React.ReactNode;
+  onClick: () => void;
+  disabled?: boolean;
+  danger?: boolean;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      disabled={disabled}
+      className={`w-full text-left px-3.5 py-2 text-[13px] disabled:opacity-40 disabled:cursor-not-allowed ${
+        danger ? "text-[var(--bad)] hover:bg-[var(--bad-bg)]" : "hover:bg-[var(--hover)]"
+      }`}
+    >
+      {children}
+    </button>
+  );
+}
+
+function MenuDivider() {
+  return <div className="border-t border-[var(--border)] my-1" />;
+}
+
+function Welcome({
+  hasUserKey,
+  hasEnvKey,
+  onEnterKey,
+  onSync,
+  onLoad,
+}: {
+  hasUserKey: boolean;
+  hasEnvKey: boolean;
+  onEnterKey: () => void;
+  onSync: () => void;
+  onLoad: () => void;
+}) {
+  const canSync = hasUserKey || hasEnvKey;
+  return (
+    <div className="flex flex-col items-center justify-center min-h-full px-6 py-12">
+      <div className="max-w-md w-full">
+        <h2 className="text-[22px] font-semibold mb-2 text-center">Welkom</h2>
+        <p className="text-[var(--muted)] text-[14px] mb-7 text-center">
+          Bekijk je Everhour tijdsregistraties lokaal. Je gegevens blijven in deze browser bewaard — niets wordt gedeeld.
+        </p>
+
+        <div className="bg-[var(--panel)] border border-[var(--border)] rounded-xl p-5 mb-3">
+          <Step
+            n={1}
+            title="Voeg je API-sleutel toe"
+            done={canSync}
+            description={
+              hasEnvKey && !hasUserKey
+                ? "Een dev-sleutel is geconfigureerd. Je kunt direct synchroniseren."
+                : "Je sleutel wordt alleen in deze browser bewaard en bij elke sync naar de server gestuurd."
+            }
+            action={
+              <Button primary={!canSync} onClick={onEnterKey} small>
+                {hasUserKey ? "Sleutel wijzigen" : "Sleutel instellen"}
+              </Button>
+            }
+          />
+          <div className="border-t border-[var(--border)] my-3" />
+          <Step
+            n={2}
+            title="Synchroniseer"
+            description="Haalt profiel en de laatste 78 weken op. Volgende sync is incrementeel."
+            action={
+              <Button primary={canSync} disabled={!canSync} onClick={onSync} small>
+                Synchroniseer
+              </Button>
+            }
+          />
+        </div>
+
+        <div className="text-center text-[12px] text-[var(--muted)]">
+          Heb je al een eerdere backup?{" "}
+          <button type="button" onClick={onLoad} className="text-[var(--accent)] hover:underline">
+            Laad een JSON-bestand
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function Step({
+  n,
+  title,
+  description,
+  action,
+  done,
+}: {
+  n: number;
+  title: string;
+  description: React.ReactNode;
+  action: React.ReactNode;
+  done?: boolean;
+}) {
+  return (
+    <div className="flex gap-3.5 items-start">
+      <div
+        className={`mt-0.5 w-6 h-6 rounded-full flex items-center justify-center text-[12px] font-semibold flex-shrink-0 ${
+          done ? "bg-[var(--good-bg)] text-[var(--good)]" : "bg-[var(--accent-bg)] text-[var(--accent)]"
+        }`}
+      >
+        {done ? "✓" : n}
+      </div>
+      <div className="flex-1">
+        <div className="font-medium text-[14px] mb-0.5">{title}</div>
+        <div className="text-[12.5px] text-[var(--muted)] mb-2.5 leading-relaxed">{description}</div>
+        <div>{action}</div>
+      </div>
+    </div>
   );
 }
 
@@ -335,16 +722,18 @@ function Sidebar({
   onSelectWeek: (iso: string) => void;
   onSelectProfile: () => void;
 }) {
+  if (!profile && weeks.length === 0) return null;
   return (
-    <aside className="w-[280px] bg-[var(--panel)] border-r border-[var(--border)] overflow-y-auto flex-shrink-0 flex flex-col">
+    <aside className="w-[300px] bg-[var(--panel)] border-r border-[var(--border)] overflow-hidden flex-shrink-0 flex flex-col">
       {profile && (
-        <div
-          className={`px-4 py-3.5 border-b border-[var(--border)] flex items-center gap-3 cursor-pointer select-none hover:bg-[var(--hover)] ${
+        <button
+          type="button"
+          onClick={onSelectProfile}
+          className={`px-4 py-3 border-b border-[var(--border)] flex items-center gap-3 cursor-pointer select-none hover:bg-[var(--hover)] text-left ${
             view === "profile" ? "bg-[var(--accent-bg)]" : ""
           }`}
-          onClick={onSelectProfile}
         >
-          {profile.avatarUrl && (
+          {profile.avatarUrl ? (
             // eslint-disable-next-line @next/next/no-img-element
             <img
               src={profile.avatarUrl}
@@ -352,56 +741,52 @@ function Sidebar({
               className="w-9 h-9 rounded-full bg-[var(--hover)] object-cover flex-shrink-0"
               onError={(e) => (e.currentTarget.style.display = "none")}
             />
+          ) : (
+            <div className="w-9 h-9 rounded-full bg-[var(--accent-bg)] text-[var(--accent)] flex items-center justify-center font-semibold text-[13px] flex-shrink-0">
+              {profile.name?.charAt(0) ?? "?"}
+            </div>
           )}
-          <div>
-            <div className="font-semibold text-[13px]">{profile.name}</div>
-            <div className="text-[var(--muted)] text-[12px]">{profile.headline || profile.role || ""}</div>
+          <div className="min-w-0 flex-1">
+            <div className="font-semibold text-[13px] truncate">{profile.name}</div>
+            <div className="text-[var(--muted)] text-[12px] truncate">{profile.headline || profile.role || ""}</div>
           </div>
-        </div>
+        </button>
       )}
       {weeks.length > 0 && (
-        <div className="px-4 pt-2.5 pb-1 text-[11px] text-[var(--muted)] uppercase tracking-wider font-semibold">
-          {weeks.length} {weeks.length === 1 ? "week" : "weken"}
+        <div className="px-4 pt-3 pb-1.5 text-[11px] text-[var(--muted)] uppercase tracking-wider font-semibold flex items-center justify-between">
+          <span>Weken</span>
+          <span className="tabular-nums">{weeks.length}</span>
         </div>
       )}
       <div className="flex-1 overflow-y-auto">
         {weeks.map((w) => {
           const active = w.week.isoWeek === activeIso && view === "week";
           return (
-            <div
+            <button
               key={w.week.isoWeek}
+              type="button"
               onClick={() => onSelectWeek(w.week.isoWeek)}
-              className={`px-4 py-2.5 border-b border-[var(--border)] cursor-pointer border-l-[3px] select-none ${
-                active ? "bg-[var(--accent-bg)] border-l-[var(--accent)]" : "border-l-transparent hover:bg-[var(--hover)]"
+              className={`w-full text-left px-4 py-2.5 border-b border-[var(--border)] cursor-pointer border-l-[3px] select-none ${
+                active
+                  ? "bg-[var(--accent-bg)] border-l-[var(--accent)]"
+                  : "border-l-transparent hover:bg-[var(--hover)]"
               }`}
             >
-              <div className="font-semibold text-[13px] tabular-nums">{w.week.isoWeek}</div>
-              <div className="text-[var(--muted)] text-[12px] mt-0.5">
-                {fmtDate(w.week.from)} - {fmtDate(w.week.to)}
+              <div className="flex items-center justify-between gap-2">
+                <div className="font-semibold text-[13px] tabular-nums">{w.week.isoWeek}</div>
+                <span className="tabular-nums font-medium text-[12px] text-[var(--muted)]">{fmtH(w.totals.seconds)}u</span>
               </div>
-              <div className="flex items-center justify-between mt-1.5 gap-2">
-                <span className="tabular-nums font-medium text-[13px]">{fmtH(w.totals.seconds)}u</span>
+              <div className="text-[var(--muted)] text-[11.5px] mt-0.5 flex items-center justify-between gap-2">
+                <span>
+                  {fmtDate(w.week.from)} – {fmtDate(w.week.to)}
+                </span>
                 <StatusPill status={w.approval.status} />
               </div>
-            </div>
+            </button>
           );
         })}
       </div>
     </aside>
-  );
-}
-
-function Empty({ onLoad, onSync }: { onLoad: () => void; onSync: () => void }) {
-  return (
-    <div className="flex flex-col items-center justify-center h-full text-center text-[var(--muted)] gap-1.5">
-      <h2 className="m-0 mb-2 text-[var(--foreground)] font-semibold">Geen gegevens geladen</h2>
-      <p className="m-0">Klik <strong>Synchroniseer</strong> om uit Everhour op te halen,</p>
-      <p className="m-0">of <strong>Laden</strong> om lokale JSON-bestanden te kiezen.</p>
-      <div className="mt-4 flex gap-2">
-        <Button onClick={onLoad}>Laden</Button>
-        <Button primary onClick={onSync}>Synchroniseer</Button>
-      </div>
-    </div>
   );
 }
 
@@ -412,18 +797,22 @@ function ProfileDetail({ profile }: { profile: EverhourProfile }) {
   const avatar = profile.avatarUrlLarge || profile.avatarUrl;
 
   return (
-    <div>
-      <div className="flex items-center gap-4 mb-5">
-        {avatar && (
+    <div className="max-w-3xl">
+      <div className="flex items-center gap-5 mb-7">
+        {avatar ? (
           // eslint-disable-next-line @next/next/no-img-element
           <img
             src={avatar}
             alt=""
-            className="w-[88px] h-[88px] rounded-full bg-[var(--hover)] object-cover border border-[var(--border)]"
+            className="w-20 h-20 rounded-full bg-[var(--hover)] object-cover border border-[var(--border)]"
           />
+        ) : (
+          <div className="w-20 h-20 rounded-full bg-[var(--accent-bg)] text-[var(--accent)] flex items-center justify-center font-semibold text-3xl border border-[var(--border)]">
+            {profile.name?.charAt(0) ?? "?"}
+          </div>
         )}
         <div>
-          <h2 className="m-0 text-2xl font-semibold">{profile.name}</h2>
+          <h2 className="m-0 text-2xl font-semibold tracking-tight">{profile.name}</h2>
           <div className="text-[var(--muted)] text-[13px] mt-1">
             {profile.headline || profile.role}
             {profile.email ? ` · ${profile.email}` : ""}
@@ -432,7 +821,7 @@ function ProfileDetail({ profile }: { profile: EverhourProfile }) {
       </div>
 
       <SectionTitle>Profiel</SectionTitle>
-      <dl className="grid grid-cols-[180px_1fr] gap-y-2.5 gap-x-4 m-0">
+      <dl className="grid grid-cols-[180px_1fr] gap-y-2.5 gap-x-4 m-0 bg-[var(--panel)] border border-[var(--border)] rounded-xl p-5">
         <Field k="Rol" v={profile.role} />
         <Field k="Status" v={profile.status} />
         <Field k="Headline" v={profile.headline} />
@@ -452,22 +841,44 @@ function Field({ k, v, mono }: { k: string; v: string | null | undefined; mono?:
   return (
     <>
       <dt className="text-[var(--muted)] text-[13px]">{k}</dt>
-      <dd className={`m-0 text-sm ${mono ? "font-mono text-[13px] tabular-nums" : ""}`}>{v || "—"}</dd>
+      <dd className={`m-0 text-[13.5px] ${mono ? "font-mono text-[12.5px] tabular-nums" : ""}`}>{v || "—"}</dd>
     </>
   );
 }
 
-function SectionTitle({ children }: { children: React.ReactNode }) {
+function SectionTitle({ children, className = "" }: { children: React.ReactNode; className?: string }) {
   return (
-    <div className="text-[11px] font-semibold uppercase tracking-wider text-[var(--muted)] mt-7 mb-2.5">
+    <div className={`text-[11px] font-semibold uppercase tracking-wider text-[var(--muted)] mb-2.5 ${className}`}>
       {children}
     </div>
   );
 }
 
+function fullWeekDays(week: WeekRecord): WeekDay[] {
+  const start = parseDate(week.week.from);
+  const byDate = new Map(week.days.map((d) => [d.date, d]));
+  const result: WeekDay[] = [];
+  for (let i = 0; i < 7; i++) {
+    const dt = new Date(start);
+    dt.setDate(dt.getDate() + i);
+    const iso = `${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, "0")}-${String(dt.getDate()).padStart(2, "0")}`;
+    const existing = byDate.get(iso);
+    result.push(
+      existing ?? {
+        date: iso,
+        weekday: dt.toLocaleDateString("en-US", { weekday: "long" }),
+        totalSeconds: 0,
+        entries: [],
+      },
+    );
+  }
+  return result;
+}
+
 function WeekDetail({ week }: { week: WeekRecord }) {
+  const days = useMemo(() => fullWeekDays(week), [week]);
   const byTask = new Map<string, { task: { id: string; name: string; linearKey: string | null; url: string | null }; seconds: number }>();
-  for (const day of week.days) {
+  for (const day of days) {
     for (const e of day.entries) {
       const cur = byTask.get(e.task.id) || { task: e.task, seconds: 0 };
       cur.seconds += e.seconds;
@@ -475,30 +886,30 @@ function WeekDetail({ week }: { week: WeekRecord }) {
     }
   }
   const tasks = [...byTask.values()].sort((a, b) => b.seconds - a.seconds);
-  const workingDays = week.days.filter((d) => d.totalSeconds > 0);
-  const maxDay = Math.max(1, ...week.days.map((d) => d.totalSeconds));
+  const workingDays = days.filter((d) => d.totalSeconds > 0);
+  const maxDay = Math.max(1, ...days.map((d) => d.totalSeconds));
   const avgPerDay = workingDays.length ? workingDays.reduce((a, d) => a + d.totalSeconds, 0) / workingDays.length / 3600 : 0;
 
   return (
-    <div>
-      <h2 className="m-0 mb-1 text-2xl font-semibold flex items-center gap-2.5">
-        {week.week.isoWeek} <StatusPill status={week.approval.status} />
-      </h2>
-      <div className="text-[var(--muted)] text-[13px] mb-5">
+    <div className="max-w-5xl">
+      <div className="flex items-baseline gap-3 mb-1">
+        <h2 className="m-0 text-[26px] font-semibold tracking-tight tabular-nums">{week.week.isoWeek}</h2>
+        <StatusPill status={week.approval.status} />
+      </div>
+      <div className="text-[var(--muted)] text-[13px] mb-6">
         {fmtFullDate(week.week.from)} t/m {fmtFullDate(week.week.to)}
-        {week.approval.submittedAt ? ` · ingediend ${week.approval.submittedAt}` : ""}
-        {week.user?.name ? ` · ${week.user.name}` : ""}
+        {week.approval.submittedAt ? ` · ingediend ${week.approval.submittedAt.slice(0, 10)}` : ""}
       </div>
 
-      <div className="grid grid-cols-3 gap-3 mb-6">
+      <div className="grid grid-cols-3 gap-3 mb-7">
         <Card label="Totaal uren" value={`${fmtH(week.totals.seconds)}u`} hint={`${tasks.length} ${tasks.length === 1 ? "ticket" : "tickets"}`} />
-        <Card label="Werkdagen" value={String(workingDays.length)} hint={workingDays.length ? `gem. ${avgPerDay.toFixed(2)}u/dag` : ""} />
+        <Card label="Werkdagen" value={String(workingDays.length)} hint={workingDays.length ? `gem. ${avgPerDay.toFixed(2)}u/dag` : "geen werk geregistreerd"} />
         <Card label="Status" value={<StatusPill status={week.approval.status} />} hint={week.approval.submittedAt ? `ingediend ${week.approval.submittedAt.slice(0, 10)}` : "niet ingediend"} small />
       </div>
 
-      <SectionTitle>Dagelijks overzicht</SectionTitle>
-      <div className="bg-[var(--panel)] border border-[var(--border)] rounded-xl px-5 py-4 grid grid-cols-7 gap-3">
-        {week.days.map((d) => {
+      <SectionTitle>Per dag</SectionTitle>
+      <div className="bg-[var(--panel)] border border-[var(--border)] rounded-xl px-5 py-4 grid grid-cols-7 gap-3 mb-7">
+        {days.map((d) => {
           const isEmpty = d.totalSeconds === 0;
           const pct = (d.totalSeconds / maxDay) * 100;
           return (
@@ -506,7 +917,7 @@ function WeekDetail({ week }: { week: WeekRecord }) {
               <div className={`text-[12px] tabular-nums font-medium min-h-[18px] ${isEmpty ? "text-[var(--muted-soft)]" : ""}`}>
                 {isEmpty ? "—" : `${fmtH(d.totalSeconds)}u`}
               </div>
-              <div className="w-full h-[100px] flex items-end">
+              <div className="w-full h-[88px] flex items-end">
                 <div
                   className={`w-full rounded-t min-h-[2px] ${isEmpty ? "bg-[var(--border)]" : "bg-[var(--accent)]"}`}
                   style={{ height: `${pct.toFixed(2)}%` }}
@@ -520,46 +931,57 @@ function WeekDetail({ week }: { week: WeekRecord }) {
       </div>
 
       <SectionTitle>Per ticket</SectionTitle>
-      <table className="w-full bg-[var(--panel)] border border-[var(--border)] rounded-xl overflow-hidden border-collapse">
-        <thead>
-          <tr>
-            <th className="px-3.5 py-2.5 text-left border-b border-[var(--border)] bg-[#fafafa] text-[11px] uppercase tracking-wider text-[var(--muted)] font-medium w-[90px]">Ticket</th>
-            <th className="px-3.5 py-2.5 text-left border-b border-[var(--border)] bg-[#fafafa] text-[11px] uppercase tracking-wider text-[var(--muted)] font-medium">Titel</th>
-            <th className="px-3.5 py-2.5 text-right border-b border-[var(--border)] bg-[#fafafa] text-[11px] uppercase tracking-wider text-[var(--muted)] font-medium w-[100px]">Uren</th>
-          </tr>
-        </thead>
-        <tbody>
-          {tasks.map((t) => (
-            <tr key={t.task.id} className="hover:bg-[#fafbfc]">
-              <td className="px-3.5 py-2.5 border-b border-[var(--border)] text-[var(--muted)] tabular-nums whitespace-nowrap font-medium">
-                {t.task.url ? (
-                  <a href={t.task.url} target="_blank" rel="noopener noreferrer" className="text-[var(--accent)] hover:underline">
-                    {t.task.linearKey || ""}
-                  </a>
-                ) : (
-                  t.task.linearKey || ""
-                )}
-              </td>
-              <td className="px-3.5 py-2.5 border-b border-[var(--border)]">{t.task.name}</td>
-              <td className="px-3.5 py-2.5 border-b border-[var(--border)] text-right tabular-nums">{fmtH(t.seconds)}</td>
+      <div className="bg-[var(--panel)] border border-[var(--border)] rounded-xl overflow-hidden mb-7">
+        <table className="w-full border-collapse">
+          <thead>
+            <tr className="bg-[#fafafa]">
+              <th className="px-4 py-2.5 text-left border-b border-[var(--border)] text-[11px] uppercase tracking-wider text-[var(--muted)] font-medium w-[100px]">Ticket</th>
+              <th className="px-4 py-2.5 text-left border-b border-[var(--border)] text-[11px] uppercase tracking-wider text-[var(--muted)] font-medium">Titel</th>
+              <th className="px-4 py-2.5 text-right border-b border-[var(--border)] text-[11px] uppercase tracking-wider text-[var(--muted)] font-medium w-[90px]">Uren</th>
             </tr>
-          ))}
-        </tbody>
-      </table>
+          </thead>
+          <tbody>
+            {tasks.map((t, idx) => (
+              <tr key={t.task.id} className={`hover:bg-[#fafbfc] ${idx === tasks.length - 1 ? "" : "border-b border-[var(--border)]"}`}>
+                <td className="px-4 py-2.5 text-[var(--muted)] tabular-nums whitespace-nowrap font-medium text-[12.5px]">
+                  {t.task.url ? (
+                    <a href={t.task.url} target="_blank" rel="noopener noreferrer" className="text-[var(--accent)] hover:underline">
+                      {t.task.linearKey || ""}
+                    </a>
+                  ) : (
+                    t.task.linearKey || ""
+                  )}
+                </td>
+                <td className="px-4 py-2.5 text-[13.5px]">{t.task.name}</td>
+                <td className="px-4 py-2.5 text-right tabular-nums text-[13px]">{fmtH(t.seconds)}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
 
-      <SectionTitle>Per dag</SectionTitle>
-      <div className="flex flex-col gap-2">
-        {week.days.map((d) => {
-          const clock = d.clockIn ? `${d.clockIn} - ${d.clockOut || "(nog open)"}` : "";
+      <SectionTitle>Dagelijkse details</SectionTitle>
+      <div className="flex flex-col gap-1.5 mb-4">
+        {days.map((d) => {
+          const clock = d.clockIn ? `${d.clockIn} – ${d.clockOut || "(open)"}` : "";
           return (
-            <details key={d.date} className="bg-[var(--panel)] border border-[var(--border)] rounded-xl px-4 py-3">
+            <details key={d.date} className="bg-[var(--panel)] border border-[var(--border)] rounded-xl px-4 py-2.5 group">
               <summary className="cursor-pointer flex items-center gap-3 list-none">
-                <span className="font-semibold min-w-[100px]">{cap(nlWeekday(d.date))}</span>
-                <span className="text-[var(--muted)] min-w-[110px] tabular-nums">{fmtFullDate(d.date)}</span>
+                <svg
+                  width="10"
+                  height="10"
+                  viewBox="0 0 10 10"
+                  className="text-[var(--muted-soft)] transition-transform group-open:rotate-90 flex-shrink-0"
+                  fill="currentColor"
+                >
+                  <path d="M3 1l4 4-4 4z" />
+                </svg>
+                <span className="font-semibold min-w-[100px] text-[13.5px]">{cap(nlWeekday(d.date))}</span>
+                <span className="text-[var(--muted)] min-w-[110px] tabular-nums text-[12.5px]">{fmtFullDate(d.date)}</span>
                 <span className="text-[var(--muted)] flex-1 text-[12px] tabular-nums">{clock}</span>
-                <span className="tabular-nums font-medium">{fmtH(d.totalSeconds)}u</span>
+                <span className="tabular-nums font-medium text-[13px]">{fmtH(d.totalSeconds)}u</span>
               </summary>
-              <div className="mt-3 pl-6 border-t border-[var(--border)] pt-2.5">
+              <div className="mt-2.5 pl-6 border-t border-[var(--border)] pt-2.5">
                 {d.entries.length === 0 ? (
                   <div className="text-[var(--muted-soft)] italic text-[13px] py-1">Geen tijdregistraties</div>
                 ) : (
@@ -590,47 +1012,75 @@ function WeekDetail({ week }: { week: WeekRecord }) {
 
 function Card({ label, value, hint, small }: { label: string; value: React.ReactNode; hint?: string; small?: boolean }) {
   return (
-    <div className="bg-[var(--panel)] border border-[var(--border)] rounded-xl px-4 py-4">
+    <div className="bg-[var(--panel)] border border-[var(--border)] rounded-xl px-4 py-3.5">
       <div className="text-[var(--muted)] text-[11px] uppercase tracking-wider font-medium">{label}</div>
-      <div className={`${small ? "text-[17px]" : "text-2xl"} font-semibold mt-1 tabular-nums`}>{value}</div>
-      {hint && <div className="text-[var(--muted-soft)] text-[12px] mt-0.5">{hint}</div>}
+      <div className={`${small ? "text-[16px] mt-1.5" : "text-[24px] mt-1"} font-semibold tabular-nums leading-none`}>{value}</div>
+      {hint && <div className="text-[var(--muted-soft)] text-[12px] mt-1.5">{hint}</div>}
     </div>
   );
 }
 
-function KeyDialog({ hasEnvKey, onClose, onSaved }: { hasEnvKey: boolean | null; onClose: () => void; onSaved: () => void }) {
+function KeyDialog({
+  hasEnvKey,
+  onClose,
+  onSaved,
+}: {
+  hasEnvKey: boolean;
+  onClose: () => void;
+  onSaved: (value: string) => void;
+}) {
   const [val, setVal] = useState(() => (typeof window !== "undefined" ? localStorage.getItem(KEY_STORAGE) || "" : ""));
 
   function save() {
-    if (val.trim()) localStorage.setItem(KEY_STORAGE, val.trim());
+    const trimmed = val.trim();
+    if (trimmed) localStorage.setItem(KEY_STORAGE, trimmed);
     else localStorage.removeItem(KEY_STORAGE);
-    onSaved();
+    onSaved(trimmed);
+  }
+
+  function onKey(e: React.KeyboardEvent<HTMLInputElement>) {
+    if (e.key === "Enter") save();
+    else if (e.key === "Escape") onClose();
   }
 
   return (
-    <div className="fixed inset-0 bg-black/30 flex items-center justify-center z-50" onClick={onClose}>
+    <div className="fixed inset-0 bg-black/30 flex items-center justify-center z-50 p-4" onClick={onClose}>
       <div
-        className="bg-[var(--panel)] border border-[var(--border)] rounded-xl max-w-md w-[90%] p-6"
+        className="bg-[var(--panel)] border border-[var(--border)] rounded-xl max-w-md w-full p-6 shadow-xl"
         onClick={(e) => e.stopPropagation()}
       >
-        <h3 className="m-0 mb-2 text-base font-semibold">Everhour API-sleutel</h3>
-        <p className="m-0 mb-3.5 text-[var(--muted)] text-[13px]">
+        <h3 className="m-0 mb-2 text-[15px] font-semibold">Everhour API-sleutel</h3>
+        <p className="m-0 mb-4 text-[var(--muted)] text-[13px] leading-relaxed">
           {hasEnvKey
-            ? "Een sleutel uit .env.local is beschikbaar. Vul hieronder in om die te overschrijven (alleen in deze browser)."
-            : "Geen sleutel in .env.local gevonden. Plak een persoonlijke API-sleutel — wordt lokaal opgeslagen (localStorage)."}
+            ? "De server heeft een dev-sleutel. Vul hieronder een eigen sleutel in om die te overschrijven — wordt alleen in deze browser bewaard (localStorage)."
+            : "Plak je persoonlijke API-sleutel. Wordt alleen in deze browser bewaard (localStorage) en bij elke sync naar de server gestuurd."}
         </p>
         <input
           type="password"
           value={val}
           onChange={(e) => setVal(e.target.value)}
+          onKeyDown={onKey}
           placeholder="xxxx-xxxx-xxxx-xxxx"
           autoComplete="off"
-          className="w-full px-2.5 py-2 border border-[var(--border)] rounded-md text-[13px] font-mono mb-3.5"
+          autoFocus
+          className="w-full px-3 py-2 border border-[var(--border)] rounded-md text-[13px] font-mono mb-4 focus:outline-none focus:border-[var(--accent)] focus:ring-2 focus:ring-[var(--accent-bg)]"
         />
         <div className="flex justify-end gap-2">
           <Button onClick={onClose}>Annuleer</Button>
           <Button primary onClick={save}>Opslaan</Button>
         </div>
+        <p className="m-0 mt-4 text-[var(--muted-soft)] text-[11.5px]">
+          Je kan een sleutel maken op{" "}
+          <a
+            href="https://app.everhour.com/account#api"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="text-[var(--accent)] hover:underline"
+          >
+            everhour.com/account
+          </a>
+          .
+        </p>
       </div>
     </div>
   );

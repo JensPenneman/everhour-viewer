@@ -58,12 +58,18 @@ export type WeekRecord = {
   days: WeekDay[];
 };
 
-export type SyncPayload = {
-  profile: EverhourProfile;
-  weeks: WeekRecord[];
+export type RawTimesheet = {
+  user: { id: number; name: string; email: string };
+  week: { id: number; from: string; to: string };
+  dailyTime?: Record<string, number>;
+  timecards?: RawTimecard[];
+  approval?: {
+    status: ApprovalStatus;
+    history?: { action: string; createdAt: string }[];
+  };
 };
 
-type EverhourRawTask = {
+type RawTask = {
   id: string;
   name: string;
   number?: string | null;
@@ -71,14 +77,14 @@ type EverhourRawTask = {
   labels?: string[];
 };
 
-type EverhourRawEntry = {
+type RawEntry = {
   date: string;
   time: number;
-  task: EverhourRawTask;
+  task: RawTask;
   lockReasons?: string[];
 };
 
-type EverhourRawTimecard = {
+type RawTimecard = {
   date: string;
   clockIn?: string | null;
   clockOut?: string | null;
@@ -86,31 +92,45 @@ type EverhourRawTimecard = {
   breakTime?: number | null;
 };
 
-type EverhourRawTimesheet = {
-  user: { id: number; name: string; email: string };
-  week: { id: number; from: string; to: string };
-  dailyTime?: Record<string, number>;
-  timecards?: EverhourRawTimecard[];
-  approval?: {
-    status: ApprovalStatus;
-    history?: { action: string; createdAt: string }[];
-  };
-};
+export class EverhourError extends Error {
+  status: number;
+  constructor(status: number, message: string) {
+    super(message);
+    this.status = status;
+  }
+}
 
 async function api<T>(path: string, key: string, params?: Record<string, string | number>): Promise<T> {
   const url = new URL(API_BASE + path);
   if (params) {
     for (const [k, v] of Object.entries(params)) url.searchParams.set(k, String(v));
   }
-  const resp = await fetch(url, { headers: { "X-Api-Key": key }, cache: "no-store" });
-  if (!resp.ok) {
-    const body = await resp.text().catch(() => "");
-    throw new Error(`Everhour ${resp.status} on ${path}${body ? `: ${body.slice(0, 200)}` : ""}`);
+
+  let lastErr: unknown;
+  for (let attempt = 0; attempt < 3; attempt++) {
+    if (attempt > 0) await new Promise((r) => setTimeout(r, 400 * attempt));
+    try {
+      const resp = await fetch(url, { headers: { "X-Api-Key": key }, cache: "no-store" });
+      if (!resp.ok) {
+        const body = await resp.text().catch(() => "");
+        // Retry only on 429 and 5xx; surface 4xx immediately
+        if (resp.status !== 429 && resp.status < 500) {
+          throw new EverhourError(resp.status, `Everhour ${resp.status} on ${path}${body ? `: ${body.slice(0, 200)}` : ""}`);
+        }
+        lastErr = new EverhourError(resp.status, `Everhour ${resp.status} on ${path}${body ? `: ${body.slice(0, 200)}` : ""}`);
+        continue;
+      }
+      return (await resp.json()) as T;
+    } catch (e) {
+      if (e instanceof EverhourError) throw e;
+      lastErr = e;
+    }
   }
-  return resp.json() as Promise<T>;
+  if (lastErr instanceof Error) throw new EverhourError(0, `Network error on ${path}: ${lastErr.message}`);
+  throw new EverhourError(0, `Network error on ${path}`);
 }
 
-function isoWeekLabel(fromIso: string): string {
+export function isoWeekLabel(fromIso: string): string {
   const d = new Date(fromIso + "T00:00:00Z");
   const target = new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate()));
   const dayNum = (target.getUTCDay() + 6) % 7;
@@ -121,7 +141,7 @@ function isoWeekLabel(fromIso: string): string {
   return `${target.getUTCFullYear()}-W${String(week).padStart(2, "0")}`;
 }
 
-function sanitizeProfile(p: Record<string, unknown>): EverhourProfile {
+export function sanitizeProfile(p: Record<string, unknown>): EverhourProfile {
   const get = <T>(k: string): T => p[k] as T;
   return {
     schemaVersion: 1,
@@ -143,7 +163,7 @@ function sanitizeProfile(p: Record<string, unknown>): EverhourProfile {
   };
 }
 
-function buildWeek(ts: EverhourRawTimesheet, entries: EverhourRawEntry[]): WeekRecord {
+export function buildWeek(ts: RawTimesheet, entries: RawEntry[]): WeekRecord {
   const days = new Map<string, WeekDay>();
   for (const e of entries) {
     let d = days.get(e.date);
@@ -206,31 +226,22 @@ function buildWeek(ts: EverhourRawTimesheet, entries: EverhourRawEntry[]): WeekR
   };
 }
 
-export async function syncEverhour(key: string, weeksBack: number, onProgress?: (msg: string) => void): Promise<SyncPayload> {
-  onProgress?.("Fetching profile…");
-  const rawProfile = await api<Record<string, unknown>>("/users/me", key);
-  const profile = sanitizeProfile(rawProfile);
+export async function fetchProfile(key: string): Promise<EverhourProfile> {
+  const raw = await api<Record<string, unknown>>("/users/me", key);
+  return sanitizeProfile(raw);
+}
 
+export async function fetchTimesheetList(key: string, userId: number, weeksBack: number): Promise<RawTimesheet[]> {
   const today = new Date().toISOString().slice(0, 10);
   const past = new Date(Date.now() - weeksBack * 7 * 24 * 3600 * 1000).toISOString().slice(0, 10);
-  onProgress?.(`Fetching ${weeksBack} weeks of timesheets…`);
-  const timesheets = await api<EverhourRawTimesheet[]>(`/users/${profile.id}/timesheets`, key, {
+  const all = await api<RawTimesheet[]>(`/users/${userId}/timesheets`, key, {
     from: past,
     to: today,
     limit: 500,
   });
+  return all.filter((ts) => ts.dailyTime || ts.approval);
+}
 
-  const relevant = timesheets.filter((ts) => ts.dailyTime || ts.approval);
-  const weeks: WeekRecord[] = [];
-  for (let i = 0; i < relevant.length; i++) {
-    const ts = relevant[i];
-    onProgress?.(`Week ${i + 1}/${relevant.length}: ${ts.week.from}`);
-    const entries = await api<EverhourRawEntry[]>(`/users/${profile.id}/time`, key, {
-      from: ts.week.from,
-      to: ts.week.to,
-    });
-    weeks.push(buildWeek(ts, entries));
-  }
-
-  return { profile, weeks };
+export async function fetchWeekEntries(key: string, userId: number, fromIso: string, toIso: string): Promise<RawEntry[]> {
+  return api<RawEntry[]>(`/users/${userId}/time`, key, { from: fromIso, to: toIso });
 }
