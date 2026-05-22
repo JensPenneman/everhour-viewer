@@ -40,7 +40,9 @@ There are two ways to supply a key:
    a fallback when no browser-supplied key is present. Convenient for local
    dev; do **not** ship this on a public deploy.
 
-Get a key at <https://app.everhour.com/account#api>.
+Get (or reset) a key from Everhour's settings page →
+*Application Access* → *API Token*:
+<https://app.everhour.com/#/account/profile>.
 
 ## Keyboard
 

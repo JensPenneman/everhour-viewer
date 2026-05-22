@@ -1072,12 +1072,12 @@ function KeyDialog({
         <p className="m-0 mt-4 text-[var(--muted-soft)] text-[11.5px]">
           Je kan een sleutel maken op{" "}
           <a
-            href="https://app.everhour.com/account#api"
+            href="https://app.everhour.com/#/account/profile"
             target="_blank"
             rel="noopener noreferrer"
             className="text-[var(--accent)] hover:underline"
           >
-            everhour.com/account
+            Settings → Application Access
           </a>
           .
         </p>
