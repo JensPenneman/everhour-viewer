@@ -1,4 +1,4 @@
-import Viewer from "./Viewer";
+import { Viewer } from "@/components/viewer";
 
 export default function Page() {
   return <Viewer />;
