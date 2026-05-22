@@ -1,36 +1,41 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Everhour viewer
 
-## Getting Started
+A small local NextJS app to view my Everhour timesheets. Replaces an older
+`viewer.html` + `sync.py` pair with a single dev-server.
 
-First, run the development server:
+## What it does
+
+- Pulls profile + the last 78 weeks of timesheets from Everhour (via an
+  internal API route, so the key stays on the server side).
+- Renders a sidebar with all weeks and a detail view per week: KPI cards,
+  daily bar chart, per-ticket totals, and an expandable per-day breakdown.
+- Caches the result in `localStorage` so a refresh doesn't re-fetch.
+- Can also load JSON files exported by the old `sync.py` (drag them onto
+  the "Laden" button).
+
+## Setup
 
 ```bash
+npm install
+cp .env.local.example .env.local
+# edit .env.local: EVERHOUR_API_KEY=...
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Then open <http://localhost:3000>.
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+You can also leave `.env.local` empty and paste a key at runtime via the
+"API-sleutel" button — it lives in `localStorage` and is forwarded to the
+sync route via header.
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+## Keyboard
 
-## Learn More
+- `↑` / `k` — previous week
+- `↓` / `j` — next week
 
-To learn more about Next.js, take a look at the following resources:
+## Notes
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
-
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
-
-## Deploy on Vercel
-
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+- API key is never written to disk by the app and never sent to the browser
+  (when sourced from `.env.local`).
+- `.env.local` is gitignored.
+- There's no production deploy — this is a local-only tool.
