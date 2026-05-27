@@ -22,6 +22,7 @@ export interface HeaderProps {
   readonly onForceSync: () => void;
   readonly onDownloadBackup: () => void;
   readonly onOpenKeyDialog: () => void;
+  readonly onOpenIntegrations: () => void;
   readonly onClearCache: () => void;
   readonly onMenuToggle: () => void;
   readonly onMenuClose: () => void;
@@ -44,6 +45,7 @@ export function Header(props: HeaderProps) {
     onForceSync,
     onDownloadBackup,
     onOpenKeyDialog,
+    onOpenIntegrations,
     onClearCache,
     onMenuToggle,
     onMenuClose,
@@ -103,6 +105,7 @@ export function Header(props: HeaderProps) {
         </MenuItem>
         <MenuItem onClick={() => fileInputRef.current?.click()}>Backup laden…</MenuItem>
         <MenuDivider />
+        <MenuItem onClick={onOpenIntegrations}>Integraties beheren…</MenuItem>
         <MenuItem onClick={onOpenKeyDialog}>
           API-sleutel{hasUserKey ? " wijzigen" : " instellen"}
         </MenuItem>

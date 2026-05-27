@@ -9,3 +9,4 @@ export {
   type StreamingSyncApi,
   type StreamingSyncOptions,
 } from "./useStreamingSync";
+export { useDayEvents, type DayEventsApi } from "./useDayEvents";

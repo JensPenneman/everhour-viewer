@@ -1,23 +1,46 @@
 "use client";
 
+import type { DayEvent, DayEventKind } from "@/lib/events";
 import type { WeekDay } from "@/lib/everhour";
 import { capitalize, fmtDateFull, fmtHours, nlWeekday, parseLocalDate } from "@/lib/format";
+import { AddEventControl, EventChip } from "../day-event";
 
 export interface DayBreakdownProps {
   readonly days: ReadonlyArray<WeekDay>;
+  readonly eventsForDate?: (isoDate: string) => ReadonlyArray<DayEvent>;
+  readonly onAddEvent?: (date: string, kind: DayEventKind) => void;
+  readonly onRemoveEvent?: (id: string) => void;
 }
 
-export function DayBreakdown({ days }: DayBreakdownProps) {
+export function DayBreakdown({
+  days,
+  eventsForDate,
+  onAddEvent,
+  onRemoveEvent,
+}: DayBreakdownProps) {
   return (
     <div className="flex flex-col gap-1.5 mb-4">
       {days.map((d) => (
-        <DayRow key={d.date} day={d} />
+        <DayRow
+          key={d.date}
+          day={d}
+          events={eventsForDate?.(d.date) ?? []}
+          onAddEvent={onAddEvent}
+          onRemoveEvent={onRemoveEvent}
+        />
       ))}
     </div>
   );
 }
 
-function DayRow({ day }: { day: WeekDay }) {
+interface DayRowProps {
+  readonly day: WeekDay;
+  readonly events: ReadonlyArray<DayEvent>;
+  readonly onAddEvent?: (date: string, kind: DayEventKind) => void;
+  readonly onRemoveEvent?: (id: string) => void;
+}
+
+function DayRow({ day, events, onAddEvent, onRemoveEvent }: DayRowProps) {
   const clock = day.clockIn ? `${day.clockIn} – ${day.clockOut || "(open)"}` : "";
 
   return (
@@ -39,10 +62,32 @@ function DayRow({ day }: { day: WeekDay }) {
         <span className="text-[var(--muted)] min-w-[110px] tabular-nums text-[12.5px]">
           {fmtDateFull(day.date)}
         </span>
-        <span className="text-[var(--muted)] flex-1 text-[12px] tabular-nums">{clock}</span>
+        {events.length > 0 ? (
+          <span className="flex flex-wrap items-center gap-1.5 flex-1 min-w-0">
+            {events.map((ev) => (
+              <EventChip key={ev.id} event={ev} compact />
+            ))}
+          </span>
+        ) : (
+          <span className="text-[var(--muted)] flex-1 text-[12px] tabular-nums">{clock}</span>
+        )}
         <span className="tabular-nums font-medium text-[13px]">{fmtHours(day.totalSeconds)}u</span>
       </summary>
       <div className="mt-2.5 pl-6 border-t border-[var(--border)] pt-2.5">
+        {events.length > 0 ? (
+          <div className="flex flex-wrap items-center gap-1.5 mb-3">
+            {events.map((ev) => (
+              <EventChip
+                key={`expanded-${ev.id}`}
+                event={ev}
+                onRemove={
+                  ev.source === "manual" && onRemoveEvent ? () => onRemoveEvent(ev.id) : undefined
+                }
+              />
+            ))}
+          </div>
+        ) : null}
+
         {day.entries.length === 0 ? (
           <div className="text-[var(--muted-soft)] italic text-[13px] py-1">
             Geen tijdregistraties
@@ -71,6 +116,12 @@ function DayRow({ day }: { day: WeekDay }) {
             </div>
           ))
         )}
+
+        {onAddEvent ? (
+          <div className="mt-3 pt-2 border-t border-[var(--border)]">
+            <AddEventControl onPick={(kind) => onAddEvent(day.date, kind)} />
+          </div>
+        ) : null}
       </div>
     </details>
   );

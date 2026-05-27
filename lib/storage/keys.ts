@@ -8,6 +8,7 @@
 export const STORAGE_KEYS = {
   cache: "everhour_viewer_data_v1",
   apiKey: "everhour_api_key",
+  dayEvents: "everhour_viewer_day_events_v1",
 } as const;
 
 export type StorageKey = (typeof STORAGE_KEYS)[keyof typeof STORAGE_KEYS];

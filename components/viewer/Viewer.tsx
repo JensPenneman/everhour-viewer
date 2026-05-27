@@ -1,9 +1,17 @@
 "use client";
 
-import { useCallback, useRef, useState } from "react";
-import { useApiKey, useKeyboardNav, useStreamingSync, useToasts, useViewerCache } from "@/hooks";
+import { useCallback, useEffect, useRef, useState } from "react";
+import {
+  useApiKey,
+  useDayEvents,
+  useKeyboardNav,
+  useStreamingSync,
+  useToasts,
+  useViewerCache,
+} from "@/hooks";
 import { buildBackupFile, downloadBackup, readBackupFiles } from "@/lib/backup";
 import { Header } from "./Header";
+import { IntegrationsDialog } from "./integrations";
 import { KeyDialog } from "./KeyDialog";
 import { ProfileDetail } from "./ProfileDetail";
 import { Sidebar, type SidebarView } from "./Sidebar";
@@ -30,11 +38,13 @@ export function Viewer() {
   const cache = useViewerCache();
   const sync = useStreamingSync();
   const toasts = useToasts();
+  const events = useDayEvents();
 
   const [view, setView] = useState<SidebarView>("empty");
   const [activeIso, setActiveIso] = useState<string | null>(null);
   const [menuOpen, setMenuOpen] = useState(false);
   const [keyDialogOpen, setKeyDialogOpen] = useState(false);
+  const [integrationsOpen, setIntegrationsOpen] = useState(false);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
 
   // Once the cache has hydrated, pick a sensible initial view.
@@ -49,6 +59,30 @@ export function Viewer() {
 
   const activeWeek =
     cache.sortedWeeks.find((w) => w.week.isoWeek === activeIso) ?? cache.sortedWeeks[0] ?? null;
+
+  // Keep the holiday provider window aligned with the data we have on screen.
+  useEffect(() => {
+    if (cache.sortedWeeks.length === 0) return;
+    const newest = cache.sortedWeeks[0];
+    const oldest = cache.sortedWeeks[cache.sortedWeeks.length - 1];
+    if (newest && oldest) events.setRange(oldest.week.from, newest.week.to);
+  }, [cache.sortedWeeks, events]);
+
+  const onAddEvent = useCallback(
+    (date: string, kind: Parameters<typeof events.addManual>[1]) => {
+      const ev = events.addManual(date, kind);
+      toasts.push(`${ev.label} toegevoegd op ${date}`, "good");
+    },
+    [events, toasts],
+  );
+
+  const onRemoveEvent = useCallback(
+    (id: string) => {
+      events.removeManual(id);
+      toasts.push("Event verwijderd", "good");
+    },
+    [events, toasts],
+  );
 
   useKeyboardNav({
     enabled: view === "week" && cache.sortedWeeks.length > 0,
@@ -187,6 +221,10 @@ export function Viewer() {
           setMenuOpen(false);
           setKeyDialogOpen(true);
         }}
+        onOpenIntegrations={() => {
+          setMenuOpen(false);
+          setIntegrationsOpen(true);
+        }}
         onClearCache={onClearCache}
         onMenuToggle={() => setMenuOpen((o) => !o)}
         onMenuClose={() => setMenuOpen(false)}
@@ -218,7 +256,12 @@ export function Viewer() {
           ) : view === "profile" && cache.profile ? (
             <ProfileDetail profile={cache.profile} />
           ) : view === "week" && activeWeek ? (
-            <WeekDetail week={activeWeek} />
+            <WeekDetail
+              week={activeWeek}
+              eventsForDate={events.forDate}
+              onAddEvent={onAddEvent}
+              onRemoveEvent={onRemoveEvent}
+            />
           ) : (
             <div className="text-[var(--muted)]">Selecteer een week in de zijbalk.</div>
           )}
@@ -232,6 +275,13 @@ export function Viewer() {
         hasEnvKey={apiKey.hasEnvKey === true}
         onClose={() => setKeyDialogOpen(false)}
         onSubmit={onSubmitKey}
+      />
+
+      <IntegrationsDialog
+        open={integrationsOpen}
+        onClose={() => setIntegrationsOpen(false)}
+        onProvidersChanged={events.refreshProviders}
+        onToast={(message, kind) => toasts.push(message, kind)}
       />
     </div>
   );
