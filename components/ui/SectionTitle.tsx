@@ -9,7 +9,7 @@ export interface SectionTitleProps {
 export function SectionTitle({ children, className = "" }: SectionTitleProps) {
   return (
     <div
-      className={`text-[11px] font-semibold uppercase tracking-wider text-[var(--muted)] mb-2.5 ${className}`}
+      className={`text-[11px] font-semibold uppercase tracking-wider text-muted mb-2.5 ${className}`}
     >
       {children}
     </div>

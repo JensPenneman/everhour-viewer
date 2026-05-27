@@ -25,16 +25,17 @@ export function ProfileDetail({ profile }: ProfileDetailProps) {
           <img
             src={avatar}
             alt=""
-            className="w-20 h-20 rounded-full bg-[var(--hover)] object-cover border border-[var(--border)]"
+            referrerPolicy="no-referrer"
+            className="w-20 h-20 rounded-full bg-hover object-cover border border-border"
           />
         ) : (
-          <div className="w-20 h-20 rounded-full bg-[var(--accent-bg)] text-[var(--accent)] flex items-center justify-center font-semibold text-3xl border border-[var(--border)]">
+          <div className="w-20 h-20 rounded-full bg-accent-bg text-accent flex items-center justify-center font-semibold text-3xl border border-border">
             {profile.name?.charAt(0) ?? "?"}
           </div>
         )}
         <div>
           <h2 className="m-0 text-2xl font-semibold tracking-tight">{profile.name}</h2>
-          <div className="text-[var(--muted)] text-[13px] mt-1">
+          <div className="text-muted text-[13px] mt-1">
             {profile.headline || profile.role}
             {profile.email ? ` · ${profile.email}` : ""}
           </div>
@@ -42,7 +43,7 @@ export function ProfileDetail({ profile }: ProfileDetailProps) {
       </div>
 
       <SectionTitle>Profiel</SectionTitle>
-      <dl className="grid grid-cols-[180px_1fr] gap-y-2.5 gap-x-4 m-0 bg-[var(--panel)] border border-[var(--border)] rounded-xl p-5">
+      <dl className="grid grid-cols-[180px_1fr] gap-y-2.5 gap-x-4 m-0 bg-panel border border-border rounded-xl p-5">
         <Field k="Rol" v={profile.role} />
         <Field k="Status" v={profile.status} />
         <Field k="Headline" v={profile.headline} />
@@ -69,7 +70,7 @@ function Field({
 }) {
   return (
     <>
-      <dt className="text-[var(--muted)] text-[13px]">{k}</dt>
+      <dt className="text-muted text-[13px]">{k}</dt>
       <dd className={`m-0 text-[13.5px] ${mono ? "font-mono text-[12.5px] tabular-nums" : ""}`}>
         {v || "—"}
       </dd>

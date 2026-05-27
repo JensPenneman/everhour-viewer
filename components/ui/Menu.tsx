@@ -41,7 +41,7 @@ export function Menu({ open, onClose, anchor, children }: MenuProps) {
       {open ? (
         <div
           role="menu"
-          className="absolute right-0 top-full mt-1.5 min-w-[220px] bg-[var(--panel)] border border-[var(--border)] rounded-lg shadow-lg z-40 py-1.5 overflow-hidden"
+          className="absolute right-0 top-full mt-1.5 min-w-[220px] bg-panel border border-border rounded-lg shadow-lg z-40 py-1.5 overflow-hidden"
         >
           {children}
         </div>
@@ -65,7 +65,7 @@ export function MenuItem({ onClick, disabled, danger, children }: MenuItemProps)
       onClick={onClick}
       disabled={disabled}
       className={`w-full text-left px-3.5 py-2 text-[13px] disabled:opacity-40 disabled:cursor-not-allowed ${
-        danger ? "text-[var(--bad)] hover:bg-[var(--bad-bg)]" : "hover:bg-[var(--hover)]"
+        danger ? "text-bad hover:bg-bad-bg" : "hover:bg-hover"
       }`}
     >
       {children}
@@ -74,5 +74,5 @@ export function MenuItem({ onClick, disabled, danger, children }: MenuItemProps)
 }
 
 export function MenuDivider() {
-  return <div role="separator" className="border-t border-[var(--border)] my-1" />;
+  return <div role="separator" className="border-t border-border my-1" />;
 }

@@ -51,12 +51,12 @@ export function IcsPanel({ onChange, onToast }: IcsPanelProps) {
   return (
     <div className="flex flex-col gap-2.5">
       {summary ? (
-        <div className="text-[12.5px] text-[var(--muted)]">
-          <span className="font-medium text-[var(--foreground)]">{summary.name}</span> ·{" "}
-          {summary.count} events · geïmporteerd {summary.importedAt.slice(0, 10)}
+        <div className="text-[12.5px] text-muted">
+          <span className="font-medium text-foreground">{summary.name}</span> · {summary.count}{" "}
+          events · geïmporteerd {summary.importedAt.slice(0, 10)}
         </div>
       ) : (
-        <div className="text-[12.5px] text-[var(--muted-soft)]">
+        <div className="text-[12.5px] text-muted-soft">
           Geen kalender geladen. Exporteer een <code>.ics</code> uit Outlook of Google en upload
           hieronder.
         </div>

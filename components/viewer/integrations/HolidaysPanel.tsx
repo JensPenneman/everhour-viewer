@@ -8,7 +8,7 @@
  */
 export function HolidaysPanel() {
   return (
-    <div className="text-[12.5px] text-[var(--muted-soft)] leading-relaxed">
+    <div className="text-[12.5px] text-muted-soft leading-relaxed">
       Officiële Belgische feestdagen worden automatisch toegevoegd zodra een week zichtbaar is. Geen
       configuratie nodig.
     </div>

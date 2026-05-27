@@ -44,13 +44,13 @@ function DayRow({ day, events, onAddEvent, onRemoveEvent }: DayRowProps) {
   const clock = day.clockIn ? `${day.clockIn} – ${day.clockOut || "(open)"}` : "";
 
   return (
-    <details className="bg-[var(--panel)] border border-[var(--border)] rounded-xl px-4 py-2.5 group">
+    <details className="bg-panel border border-border rounded-xl px-4 py-2.5 group">
       <summary className="cursor-pointer flex items-center gap-3 list-none">
         <svg
           width="10"
           height="10"
           viewBox="0 0 10 10"
-          className="text-[var(--muted-soft)] transition-transform group-open:rotate-90 flex-shrink-0"
+          className="text-muted-soft transition-transform group-open:rotate-90 shrink-0"
           fill="currentColor"
           aria-hidden="true"
         >
@@ -59,7 +59,7 @@ function DayRow({ day, events, onAddEvent, onRemoveEvent }: DayRowProps) {
         <span className="font-semibold min-w-[100px] text-[13.5px]">
           {capitalize(nlWeekday(parseLocalDate(day.date)))}
         </span>
-        <span className="text-[var(--muted)] min-w-[110px] tabular-nums text-[12.5px]">
+        <span className="text-muted min-w-[110px] tabular-nums text-[12.5px]">
           {fmtDateFull(day.date)}
         </span>
         {events.length > 0 ? (
@@ -69,16 +69,16 @@ function DayRow({ day, events, onAddEvent, onRemoveEvent }: DayRowProps) {
             ))}
           </span>
         ) : (
-          <span className="text-[var(--muted)] flex-1 text-[12px] tabular-nums">{clock}</span>
+          <span className="text-muted flex-1 text-[12px] tabular-nums">{clock}</span>
         )}
         <span className="tabular-nums font-medium text-[13px]">{fmtHours(day.totalSeconds)}u</span>
       </summary>
-      <div className="mt-2.5 pl-6 border-t border-[var(--border)] pt-2.5">
+      <div className="mt-2.5 pl-6 border-t border-border pt-2.5">
         {events.length > 0 ? (
           <div className="flex flex-wrap items-center gap-1.5 mb-3">
             {events.map((ev) => (
               <EventChip
-                key={`expanded-${ev.id}`}
+                key={ev.id}
                 event={ev}
                 onRemove={
                   ev.source === "manual" && onRemoveEvent ? () => onRemoveEvent(ev.id) : undefined
@@ -89,19 +89,20 @@ function DayRow({ day, events, onAddEvent, onRemoveEvent }: DayRowProps) {
         ) : null}
 
         {day.entries.length === 0 ? (
-          <div className="text-[var(--muted-soft)] italic text-[13px] py-1">
-            Geen tijdregistraties
-          </div>
+          <div className="text-muted-soft italic text-[13px] py-1">Geen tijdregistraties</div>
         ) : (
-          day.entries.map((entry, idx) => (
-            <div key={idx} className="flex gap-3 py-1 text-[13px] items-baseline">
-              <span className="text-[var(--muted)] w-20 flex-shrink-0 tabular-nums font-medium">
+          day.entries.map((entry) => (
+            <div
+              key={`${entry.task.id}-${entry.seconds}`}
+              className="flex gap-3 py-1 text-[13px] items-baseline"
+            >
+              <span className="text-muted w-20 shrink-0 tabular-nums font-medium">
                 {entry.task.url ? (
                   <a
                     href={entry.task.url}
                     target="_blank"
                     rel="noopener noreferrer"
-                    className="text-[var(--accent)] hover:underline"
+                    className="text-accent hover:underline"
                   >
                     {entry.task.linearKey || ""}
                   </a>
@@ -110,7 +111,7 @@ function DayRow({ day, events, onAddEvent, onRemoveEvent }: DayRowProps) {
                 )}
               </span>
               <span className="flex-1">{entry.task.name}</span>
-              <span className="w-16 text-right tabular-nums text-[var(--muted)]">
+              <span className="w-16 text-right tabular-nums text-muted">
                 {fmtHours(entry.seconds)}u
               </span>
             </div>
@@ -118,7 +119,7 @@ function DayRow({ day, events, onAddEvent, onRemoveEvent }: DayRowProps) {
         )}
 
         {onAddEvent ? (
-          <div className="mt-3 pt-2 border-t border-[var(--border)]">
+          <div className="mt-3 pt-2 border-t border-border">
             <AddEventControl onPick={(kind) => onAddEvent(day.date, kind)} />
           </div>
         ) : null}

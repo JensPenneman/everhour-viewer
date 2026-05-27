@@ -22,7 +22,7 @@ export function KeyDialog({ open, hasEnvKey, onClose, onSubmit }: KeyDialogProps
   return (
     <Dialog open={open} onClose={onClose} ariaLabel="Everhour API-sleutel">
       <h3 className="m-0 mb-2 text-[15px] font-semibold">Everhour API-sleutel</h3>
-      <p className="m-0 mb-4 text-[var(--muted)] text-[13px] leading-relaxed">
+      <p className="m-0 mb-4 text-muted text-[13px] leading-relaxed">
         {hasEnvKey
           ? "De server heeft een dev-sleutel. Vul hieronder een eigen sleutel in om die te overschrijven — wordt alleen in deze browser bewaard (localStorage)."
           : "Plak je persoonlijke API-sleutel. Wordt alleen in deze browser bewaard (localStorage) en bij elke sync naar de server gestuurd."}
@@ -37,7 +37,7 @@ export function KeyDialog({ open, hasEnvKey, onClose, onSubmit }: KeyDialogProps
         placeholder="xxxx-xxxx-xxxx-xxxx"
         autoComplete="off"
         autoFocus
-        className="w-full px-3 py-2 border border-[var(--border)] rounded-md text-[13px] font-mono mb-4 focus:outline-none focus:border-[var(--accent)] focus:ring-2 focus:ring-[var(--accent-bg)]"
+        className="w-full px-3 py-2 border border-border rounded-md text-[13px] font-mono mb-4 focus:outline-none focus:border-accent focus:ring-2 focus:ring-accent-bg"
       />
       <div className="flex justify-end gap-2">
         <Button onClick={onClose}>Annuleer</Button>
@@ -45,13 +45,13 @@ export function KeyDialog({ open, hasEnvKey, onClose, onSubmit }: KeyDialogProps
           Opslaan
         </Button>
       </div>
-      <p className="m-0 mt-4 text-[var(--muted-soft)] text-[11.5px]">
+      <p className="m-0 mt-4 text-muted-soft text-[11.5px]">
         Je kan een sleutel maken op{" "}
         <a
           href="https://app.everhour.com/#/account/profile"
           target="_blank"
           rel="noopener noreferrer"
-          className="text-[var(--accent)] hover:underline"
+          className="text-accent hover:underline"
         >
           Settings → Application Access
         </a>

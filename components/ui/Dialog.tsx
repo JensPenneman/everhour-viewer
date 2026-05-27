@@ -41,7 +41,7 @@ export function Dialog({ open, onClose, children, ariaLabel }: DialogProps) {
       onClick={onClose}
     >
       <div
-        className="bg-[var(--panel)] border border-[var(--border)] rounded-xl max-w-md w-full p-6 shadow-xl"
+        className="bg-panel border border-border rounded-xl max-w-md w-full p-6 shadow-xl"
         onClick={(e) => e.stopPropagation()}
       >
         {children}

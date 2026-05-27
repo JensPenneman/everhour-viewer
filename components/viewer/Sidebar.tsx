@@ -28,14 +28,14 @@ export function Sidebar({
   return (
     <aside
       aria-label="Navigatie"
-      className="w-[300px] bg-[var(--panel)] border-r border-[var(--border)] overflow-hidden flex-shrink-0 flex flex-col"
+      className="w-[300px] bg-panel border-r border-border overflow-hidden shrink-0 flex flex-col"
     >
       {profile ? (
         <ProfileCard profile={profile} active={view === "profile"} onClick={onSelectProfile} />
       ) : null}
 
       {weeks.length > 0 ? (
-        <div className="px-4 pt-3 pb-1.5 text-[11px] text-[var(--muted)] uppercase tracking-wider font-semibold flex items-center justify-between">
+        <div className="px-4 pt-3 pb-1.5 text-[11px] text-muted uppercase tracking-wider font-semibold flex items-center justify-between">
           <span>Weken</span>
           <span className="tabular-nums">{weeks.length}</span>
         </div>
@@ -68,8 +68,8 @@ function ProfileCard({
     <button
       type="button"
       onClick={onClick}
-      className={`px-4 py-3 border-b border-[var(--border)] flex items-center gap-3 cursor-pointer select-none hover:bg-[var(--hover)] text-left ${
-        active ? "bg-[var(--accent-bg)]" : ""
+      className={`px-4 py-3 border-b border-border flex items-center gap-3 cursor-pointer select-none hover:bg-hover text-left ${
+        active ? "bg-accent-bg" : ""
       }`}
     >
       {profile.avatarUrl ? (
@@ -77,17 +77,17 @@ function ProfileCard({
         <img
           src={profile.avatarUrl}
           alt=""
-          className="w-9 h-9 rounded-full bg-[var(--hover)] object-cover flex-shrink-0"
+          className="w-9 h-9 rounded-full bg-hover object-cover shrink-0"
           onError={(e) => (e.currentTarget.style.display = "none")}
         />
       ) : (
-        <div className="w-9 h-9 rounded-full bg-[var(--accent-bg)] text-[var(--accent)] flex items-center justify-center font-semibold text-[13px] flex-shrink-0">
+        <div className="w-9 h-9 rounded-full bg-accent-bg text-accent flex items-center justify-center font-semibold text-[13px] shrink-0">
           {profile.name?.charAt(0) ?? "?"}
         </div>
       )}
       <div className="min-w-0 flex-1">
         <div className="font-semibold text-[13px] truncate">{profile.name}</div>
-        <div className="text-[var(--muted)] text-[12px] truncate">
+        <div className="text-muted text-[12px] truncate">
           {profile.headline || profile.role || ""}
         </div>
       </div>
@@ -108,19 +108,17 @@ function WeekRow({
     <button
       type="button"
       onClick={onClick}
-      className={`w-full text-left px-4 py-2.5 border-b border-[var(--border)] cursor-pointer border-l-[3px] select-none ${
-        active
-          ? "bg-[var(--accent-bg)] border-l-[var(--accent)]"
-          : "border-l-transparent hover:bg-[var(--hover)]"
+      className={`w-full text-left px-4 py-2.5 border-b border-border cursor-pointer border-l-[3px] select-none ${
+        active ? "bg-accent-bg border-l-accent" : "border-l-transparent hover:bg-hover"
       }`}
     >
       <div className="flex items-center justify-between gap-2">
         <div className="font-semibold text-[13px] tabular-nums">{week.week.isoWeek}</div>
-        <span className="tabular-nums font-medium text-[12px] text-[var(--muted)]">
+        <span className="tabular-nums font-medium text-[12px] text-muted">
           {fmtHours(week.totals.seconds)}u
         </span>
       </div>
-      <div className="text-[var(--muted)] text-[11.5px] mt-0.5 flex items-center justify-between gap-2">
+      <div className="text-muted text-[11.5px] mt-0.5 flex items-center justify-between gap-2">
         <span>
           {fmtDateShort(week.week.from)} – {fmtDateShort(week.week.to)}
         </span>

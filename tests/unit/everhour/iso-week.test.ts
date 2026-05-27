@@ -26,4 +26,30 @@ describe("isoWeekLabel", () => {
     expect(label).toMatch(/^2026-W0\d$/);
     expect(label).toBe("2026-W02");
   });
+
+  it("handles years whose first Jan day is a Sunday (week 1 starts the next Monday)", () => {
+    // 2023-01-01 is a Sunday; its ISO week is 2022-W52.
+    expect(isoWeekLabel("2023-01-01")).toBe("2022-W52");
+    // 2023-01-02 (Monday) starts ISO week 2023-W01.
+    expect(isoWeekLabel("2023-01-02")).toBe("2023-W01");
+  });
+
+  it("handles years with 53 ISO weeks", () => {
+    // 2020 has 53 ISO weeks because Jan 1 is a Wednesday in a leap year.
+    expect(isoWeekLabel("2020-12-28")).toBe("2020-W53");
+    expect(isoWeekLabel("2020-12-31")).toBe("2020-W53");
+    expect(isoWeekLabel("2021-01-01")).toBe("2020-W53");
+  });
+
+  it("survives the leap day of a leap year", () => {
+    // 2024-02-29 (Thursday) sits in week 9.
+    expect(isoWeekLabel("2024-02-29")).toBe("2024-W09");
+  });
+
+  it("treats the year-boundary Thursday rule consistently", () => {
+    // 2025-12-29 (Monday) → its Thursday is 2026-01-01 → week 2026-W01.
+    expect(isoWeekLabel("2025-12-29")).toBe("2026-W01");
+    // 2026-12-31 (Thursday) — that's a Thursday in a 53-week year? Verify it ends up in W53.
+    expect(isoWeekLabel("2026-12-31")).toBe("2026-W53");
+  });
 });

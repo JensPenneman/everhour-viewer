@@ -12,10 +12,10 @@ export interface ButtonProps extends Omit<ButtonHTMLAttributes<HTMLButtonElement
 }
 
 const VARIANT_CLASS: Record<ButtonVariant, string> = {
-  default: "bg-[var(--panel)] border-[var(--border)] hover:bg-[var(--hover)]",
-  primary: "bg-[var(--accent)] text-white border-[var(--accent)] hover:brightness-110",
-  ghost: "bg-transparent border-transparent hover:bg-[var(--hover)]",
-  danger: "bg-[var(--bad-bg)] text-[var(--bad)] border-[var(--bad-bg)] hover:brightness-95",
+  default: "bg-panel border-border hover:bg-hover",
+  primary: "bg-accent text-white border-accent hover:brightness-110",
+  ghost: "bg-transparent border-transparent hover:bg-hover",
+  danger: "bg-bad-bg text-bad border-bad-bg hover:brightness-95",
 };
 
 const SIZE_CLASS: Record<ButtonSize, string> = {

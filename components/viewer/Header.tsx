@@ -53,7 +53,7 @@ export function Header(props: HeaderProps) {
   } = props;
 
   return (
-    <header className="px-5 h-14 bg-[var(--panel)] border-b border-[var(--border)] flex items-center gap-3 flex-shrink-0">
+    <header className="px-5 h-14 bg-panel border-b border-border flex items-center gap-3 shrink-0">
       <div className="flex items-center gap-2.5">
         <Logo />
         <span className="font-semibold text-[15px] tracking-tight">Everhour viewer</span>
@@ -63,7 +63,7 @@ export function Header(props: HeaderProps) {
         {progress ? (
           <ProgressBar progress={progress} />
         ) : (
-          <span className="text-[var(--muted)] text-[13px] truncate">
+          <span className="text-muted text-[13px] truncate">
             {summary(profile, weekCount, totalHours)}
           </span>
         )}

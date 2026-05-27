@@ -33,7 +33,7 @@ export function WeekDetail({ week, eventsForDate, onAddEvent, onRemoveEvent }: W
         </h2>
         <StatusPill status={week.approval.status} />
       </div>
-      <div className="text-[var(--muted)] text-[13px] mb-6">
+      <div className="text-muted text-[13px] mb-6">
         {fmtDateFull(week.week.from)} t/m {fmtDateFull(week.week.to)}
         {week.approval.submittedAt ? ` · ingediend ${week.approval.submittedAt.slice(0, 10)}` : ""}
       </div>

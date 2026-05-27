@@ -1,8 +1,8 @@
 "use client";
 
-import { useState } from "react";
+import { useState, type ReactNode } from "react";
 import { Button, Dialog } from "@/components/ui";
-import { PROVIDERS, type Provider, type ProviderStatus } from "@/lib/providers";
+import { PROVIDERS, type Provider } from "@/lib/providers";
 import { HolidaysPanel } from "./HolidaysPanel";
 import { IcsPanel } from "./IcsPanel";
 import { ProviderRow } from "./ProviderRow";
@@ -19,9 +19,15 @@ export interface IntegrationsDialogProps {
  * Integrations management dialog.
  *
  * Renders one {@link ProviderRow} per provider in the registry, with a
- * provider-specific settings component slotted in via the per-id map
- * below. Adding a new provider is two edits: register it in
- * `lib/providers/registry.ts` and add its panel below.
+ * provider-specific settings component picked by id in
+ * {@link providerPanel} below. Adding a new provider is two edits:
+ * register it in `lib/providers/registry.ts` and add its case here.
+ *
+ * Provider status (`ready`, `message`, …) is read synchronously on each
+ * render. A `tick` counter bumped by `notifyChange()` forces a re-render
+ * after a child panel mutates underlying storage — no effect-driven
+ * storage subscription is needed because all mutations originate inside
+ * this dialog.
  */
 export function IntegrationsDialog({
   open,
@@ -29,12 +35,7 @@ export function IntegrationsDialog({
   onProvidersChanged,
   onToast,
 }: IntegrationsDialogProps) {
-  // `tick` is a render-key that child panels bump via `notifyChange()`
-  // whenever they mutate a provider's underlying state. The next render
-  // calls `provider.status()` afresh, so the badge and message stay
-  // current — no effect-driven storage subscription needed because the
-  // mutations all originate inside this dialog.
-  const [tick, setTick] = useState(0);
+  const [, setTick] = useState(0);
 
   function notifyChange() {
     setTick((t) => t + 1);
@@ -45,19 +46,19 @@ export function IntegrationsDialog({
     <Dialog open={open} onClose={onClose} ariaLabel="Integraties beheren">
       <div className="flex items-baseline justify-between mb-4">
         <h3 className="m-0 text-[16px] font-semibold">Integraties</h3>
-        <span className="text-[11px] text-[var(--muted)]">
+        <span className="text-[11px] text-muted">
           {PROVIDERS.length} {PROVIDERS.length === 1 ? "bron" : "bronnen"}
         </span>
       </div>
-      <p className="m-0 mb-4 text-[var(--muted)] text-[13px] leading-relaxed">
+      <p className="m-0 mb-4 text-muted text-[13px] leading-relaxed">
         Bronnen leveren events die over je Everhour-weken worden gelegd. Alles wordt lokaal in deze
         browser opgeslagen — er gaat niets naar een server.
       </p>
 
       <div className="flex flex-col gap-3 max-h-[60vh] overflow-y-auto">
         {PROVIDERS.map((p) => (
-          <ProviderRow key={p.meta.id} provider={p} status={statusFor(p, tick)}>
-            {renderPanel(p, notifyChange, onToast)}
+          <ProviderRow key={p.meta.id} provider={p} status={p.status()}>
+            {providerPanel(p, notifyChange, onToast)}
           </ProviderRow>
         ))}
       </div>
@@ -69,24 +70,17 @@ export function IntegrationsDialog({
   );
 }
 
-function statusFor(provider: Provider, _tick: number): ProviderStatus {
-  // _tick is a dependency placeholder that forces this to re-read whenever
-  // a child panel asks for a refresh.
-  void _tick;
-  return provider.status();
-}
-
-function renderPanel(
+function providerPanel(
   provider: Provider,
   notifyChange: () => void,
   onToast: (message: string, kind: "good" | "error") => void,
-): React.ReactNode {
+): ReactNode {
   switch (provider.meta.id) {
     case "holidays:be":
       return <HolidaysPanel />;
     case "ics:imported":
       return <IcsPanel onChange={notifyChange} onToast={onToast} />;
     default:
-      return <div className="text-[12.5px] text-[var(--muted-soft)]">Geen instellingen.</div>;
+      return <div className="text-[12.5px] text-muted-soft">Geen instellingen.</div>;
   }
 }

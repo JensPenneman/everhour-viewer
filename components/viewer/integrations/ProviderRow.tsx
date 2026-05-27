@@ -24,10 +24,10 @@ const CATEGORY_LABEL: Record<Provider["meta"]["category"], string> = {
  */
 export function ProviderRow({ provider, status, children }: ProviderRowProps) {
   return (
-    <div className="border border-[var(--border)] rounded-xl p-4 bg-[var(--panel)]">
+    <div className="border border-border rounded-xl p-4 bg-panel">
       <div className="flex items-start gap-3 mb-2">
         <div
-          className="w-9 h-9 rounded-lg bg-[var(--hover)] flex items-center justify-center text-[18px] flex-shrink-0"
+          className="w-9 h-9 rounded-lg bg-hover flex items-center justify-center text-[18px] shrink-0"
           aria-hidden="true"
         >
           {provider.meta.icon}
@@ -35,33 +35,29 @@ export function ProviderRow({ provider, status, children }: ProviderRowProps) {
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2">
             <span className="font-semibold text-[14px]">{provider.meta.name}</span>
-            <span className="text-[10.5px] text-[var(--muted)] uppercase tracking-wider font-medium">
+            <span className="text-[10.5px] text-muted uppercase tracking-wider font-medium">
               {CATEGORY_LABEL[provider.meta.category]}
             </span>
           </div>
-          <p className="m-0 text-[12.5px] text-[var(--muted)] leading-relaxed mt-0.5">
+          <p className="m-0 text-[12.5px] text-muted leading-relaxed mt-0.5">
             {provider.meta.description}
           </p>
         </div>
-        <div className="flex-shrink-0">
+        <div className="shrink-0">
           <span
             className={`inline-flex items-center gap-1.5 text-[11px] font-medium uppercase tracking-wider px-2 py-0.5 rounded-full ${
-              status.ready
-                ? "bg-[var(--good-bg)] text-[var(--good)]"
-                : "bg-[var(--hover)] text-[var(--muted)]"
+              status.ready ? "bg-good-bg text-good" : "bg-hover text-muted"
             }`}
           >
             <span
-              className={`w-1.5 h-1.5 rounded-full ${
-                status.ready ? "bg-[var(--good)]" : "bg-[var(--muted-soft)]"
-              }`}
+              className={`w-1.5 h-1.5 rounded-full ${status.ready ? "bg-good" : "bg-muted-soft"}`}
               aria-hidden="true"
             />
             {status.ready ? "Actief" : "Niet actief"}
           </span>
         </div>
       </div>
-      <div className="text-[12px] text-[var(--muted)] mb-2 pl-12">{status.message}</div>
+      <div className="text-[12px] text-muted mb-2 pl-12">{status.message}</div>
       <div className="pl-12">{children}</div>
     </div>
   );

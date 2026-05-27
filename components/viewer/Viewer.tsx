@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   useApiKey,
   useDayEvents,
@@ -22,16 +22,19 @@ import { WeekDetail } from "./week-detail";
 /**
  * Top-level orchestrator for the viewer.
  *
- * Owns the cross-cutting state (current view, active week, menu/dialog
- * visibility) and wires together the four hook-managed concerns:
+ * Owns the cross-cutting UI state (current view, active week, menu/dialog
+ * visibility) and wires together the five hook-managed concerns:
  *
  *   - {@link useApiKey}        — key probe + storage,
  *   - {@link useViewerCache}   — profile + weeks (persisted),
  *   - {@link useStreamingSync} — NDJSON sync driver,
- *   - {@link useToasts}        — bottom-right toast queue.
+ *   - {@link useToasts}        — bottom-right toast queue,
+ *   - {@link useDayEvents}     — manual + provider-sourced day events.
  *
- * Everything visible on screen is rendered by a child component; this
- * file is purely composition.
+ * The `view` state uses `"empty"` as a "let the data decide" sentinel
+ * rather than a literal empty screen — once the cache has data the
+ * displayed view is derived. This keeps initial hydration free of any
+ * setState-in-render, which React 19 forbids.
  */
 export function Viewer() {
   const apiKey = useApiKey();
@@ -40,6 +43,17 @@ export function Viewer() {
   const toasts = useToasts();
   const events = useDayEvents();
 
+  // Destructure stable callbacks from hook APIs so effect dependency
+  // arrays don't fire on every render when the wrapper object changes.
+  const {
+    setRange: setEventRange,
+    forDate: eventsForDate,
+    addManual: addManualEvent,
+    removeManual: removeManualEvent,
+    refreshProviders,
+  } = events;
+  const toastsPush = toasts.push;
+
   const [view, setView] = useState<SidebarView>("empty");
   const [activeIso, setActiveIso] = useState<string | null>(null);
   const [menuOpen, setMenuOpen] = useState(false);
@@ -47,52 +61,52 @@ export function Viewer() {
   const [integrationsOpen, setIntegrationsOpen] = useState(false);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
 
-  // Once the cache has hydrated, pick a sensible initial view.
-  if (cache.hydrated && view === "empty") {
-    if (cache.weeks.length > 0) {
-      setView("week");
-      if (!activeIso) setActiveIso(cache.sortedWeeks[0]?.week.isoWeek ?? null);
-    } else if (cache.profile) {
-      setView("profile");
-    }
-  }
+  // Derived view: respects an explicit user pick, otherwise auto-selects
+  // based on cache contents. No setState-in-render.
+  const effectiveView: SidebarView = useMemo(() => {
+    if (view !== "empty") return view;
+    if (cache.weeks.length > 0) return "week";
+    if (cache.profile) return "profile";
+    return "empty";
+  }, [view, cache.weeks.length, cache.profile]);
 
-  const activeWeek =
-    cache.sortedWeeks.find((w) => w.week.isoWeek === activeIso) ?? cache.sortedWeeks[0] ?? null;
+  const effectiveActiveIso = activeIso ?? cache.sortedWeeks[0]?.week.isoWeek ?? null;
+  const activeWeek = cache.sortedWeeks.find((w) => w.week.isoWeek === effectiveActiveIso) ?? null;
 
-  // Keep the holiday provider window aligned with the data we have on screen.
+  // Keep the holiday / ICS provider window aligned with the data we
+  // have on screen. Re-runs only when the underlying weeks change.
   useEffect(() => {
     if (cache.sortedWeeks.length === 0) return;
     const newest = cache.sortedWeeks[0];
     const oldest = cache.sortedWeeks[cache.sortedWeeks.length - 1];
-    if (newest && oldest) events.setRange(oldest.week.from, newest.week.to);
-  }, [cache.sortedWeeks, events]);
+    if (newest && oldest) setEventRange(oldest.week.from, newest.week.to);
+  }, [cache.sortedWeeks, setEventRange]);
 
   const onAddEvent = useCallback(
-    (date: string, kind: Parameters<typeof events.addManual>[1]) => {
-      const ev = events.addManual(date, kind);
-      toasts.push(`${ev.label} toegevoegd op ${date}`, "good");
+    (date: string, kind: Parameters<typeof addManualEvent>[1]) => {
+      const ev = addManualEvent(date, kind);
+      toastsPush(`${ev.label} toegevoegd op ${date}`, "good");
     },
-    [events, toasts],
+    [addManualEvent, toastsPush],
   );
 
   const onRemoveEvent = useCallback(
     (id: string) => {
-      events.removeManual(id);
-      toasts.push("Event verwijderd", "good");
+      removeManualEvent(id);
+      toastsPush("Event verwijderd", "good");
     },
-    [events, toasts],
+    [removeManualEvent, toastsPush],
   );
 
   useKeyboardNav({
-    enabled: view === "week" && cache.sortedWeeks.length > 0,
+    enabled: effectiveView === "week" && cache.sortedWeeks.length > 0,
     onPrev: () => {
-      const idx = cache.sortedWeeks.findIndex((w) => w.week.isoWeek === activeIso);
+      const idx = cache.sortedWeeks.findIndex((w) => w.week.isoWeek === effectiveActiveIso);
       const next = cache.sortedWeeks[Math.max(0, idx - 1)];
       if (next) setActiveIso(next.week.isoWeek);
     },
     onNext: () => {
-      const idx = cache.sortedWeeks.findIndex((w) => w.week.isoWeek === activeIso);
+      const idx = cache.sortedWeeks.findIndex((w) => w.week.isoWeek === effectiveActiveIso);
       const next = cache.sortedWeeks[Math.min(cache.sortedWeeks.length - 1, idx + 1)];
       if (next) setActiveIso(next.week.isoWeek);
     },
@@ -123,15 +137,15 @@ export function Viewer() {
           }
         },
         onDone: (counts) => {
-          toasts.push(
+          toastsPush(
             `Sync klaar — ${counts.new} nieuw · ${counts.updated} bijgewerkt · ${counts.skipped} ongewijzigd`,
             "good",
           );
         },
-        onError: (message) => toasts.push(`Sync mislukt: ${message}`, "error"),
+        onError: (message) => toastsPush(`Sync mislukt: ${message}`, "error"),
       });
     },
-    [apiKey, cache, sync, toasts],
+    [apiKey, cache, sync, toastsPush],
   );
 
   const onSync = useCallback(() => {
@@ -147,13 +161,13 @@ export function Viewer() {
   const onDownloadBackup = useCallback(() => {
     setMenuOpen(false);
     if (!cache.profile && cache.weeks.length === 0) {
-      toasts.push("Niets om te exporteren", "error");
+      toastsPush("Niets om te exporteren", "error");
       return;
     }
     const backup = buildBackupFile(cache.profile, cache.weeks);
     downloadBackup(`everhour-backup-${new Date().toISOString().slice(0, 10)}.json`, backup);
-    toasts.push(`Backup gedownload (${cache.weeks.length} weken)`, "good");
-  }, [cache, toasts]);
+    toastsPush(`Backup gedownload (${cache.weeks.length} weken)`, "good");
+  }, [cache.profile, cache.weeks, toastsPush]);
 
   const onClearCache = useCallback(() => {
     setMenuOpen(false);
@@ -161,8 +175,8 @@ export function Viewer() {
     cache.clear();
     setActiveIso(null);
     setView("empty");
-    toasts.push("Cache gewist", "good");
-  }, [cache, toasts]);
+    toastsPush("Cache gewist", "good");
+  }, [cache, toastsPush]);
 
   const onLoadFiles = useCallback(
     async (files: FileList) => {
@@ -170,7 +184,7 @@ export function Viewer() {
       if (!loaded.hasWeeks && !loaded.hasProfile) return;
       if (loaded.hasProfile) cache.setProfile(loaded.profile);
       if (loaded.hasWeeks) cache.upsertWeeks(loaded.weeks);
-      if (loaded.hasWeeks && !activeIso) {
+      if (loaded.hasWeeks && activeIso === null) {
         const next = [...loaded.weeks].sort((a, b) => b.week.from.localeCompare(a.week.from))[0];
         if (next) {
           setActiveIso(next.week.isoWeek);
@@ -184,25 +198,40 @@ export function Viewer() {
       if (loaded.hasWeeks) {
         parts.push(`${loaded.weeks.length} ${loaded.weeks.length === 1 ? "week" : "weken"}`);
       }
-      toasts.push(`Geladen: ${parts.join(" + ")}`, "good");
+      toastsPush(`Geladen: ${parts.join(" + ")}`, "good");
     },
-    [cache, activeIso, toasts],
+    [cache, activeIso, toastsPush],
   );
 
   const onSubmitKey = useCallback(
     (value: string) => {
       apiKey.setUserKey(value);
       setKeyDialogOpen(false);
-      toasts.push(value ? "API-sleutel opgeslagen" : "API-sleutel verwijderd", "good");
+      toastsPush(value ? "API-sleutel opgeslagen" : "API-sleutel verwijderd", "good");
     },
-    [apiKey, toasts],
+    [apiKey, toastsPush],
   );
 
-  const showEmpty = !cache.profile && cache.weeks.length === 0;
-  const hasData = !!cache.profile || cache.weeks.length > 0;
+  const onOpenIntegrations = useCallback(() => {
+    setMenuOpen(false);
+    setIntegrationsOpen(true);
+  }, []);
+
+  const onOpenKeyDialog = useCallback(() => {
+    setMenuOpen(false);
+    setKeyDialogOpen(true);
+  }, []);
+
+  const onToastFromDialog = useCallback(
+    (message: string, kind: "good" | "error") => toastsPush(message, kind),
+    [toastsPush],
+  );
+
+  const hasData = cache.profile !== null || cache.weeks.length > 0;
+  const showWelcome = effectiveView === "empty";
 
   return (
-    <div className="h-screen flex flex-col overflow-hidden bg-[var(--background)]">
+    <div className="h-screen flex flex-col overflow-hidden bg-background">
       <Header
         profile={cache.profile}
         weekCount={cache.weeks.length}
@@ -217,14 +246,8 @@ export function Viewer() {
         onSync={onSync}
         onForceSync={onForceSync}
         onDownloadBackup={onDownloadBackup}
-        onOpenKeyDialog={() => {
-          setMenuOpen(false);
-          setKeyDialogOpen(true);
-        }}
-        onOpenIntegrations={() => {
-          setMenuOpen(false);
-          setIntegrationsOpen(true);
-        }}
+        onOpenKeyDialog={onOpenKeyDialog}
+        onOpenIntegrations={onOpenIntegrations}
         onClearCache={onClearCache}
         onMenuToggle={() => setMenuOpen((o) => !o)}
         onMenuClose={() => setMenuOpen(false)}
@@ -235,8 +258,8 @@ export function Viewer() {
         <Sidebar
           profile={cache.profile}
           weeks={cache.sortedWeeks}
-          activeIso={activeIso}
-          view={view}
+          activeIso={effectiveActiveIso}
+          view={effectiveView}
           onSelectWeek={(iso) => {
             setActiveIso(iso);
             setView("week");
@@ -245,25 +268,25 @@ export function Viewer() {
         />
 
         <main className="flex-1 overflow-y-auto px-9 py-7">
-          {showEmpty ? (
+          {showWelcome ? (
             <Welcome
               hasUserKey={apiKey.hasUserKey}
               hasEnvKey={apiKey.hasEnvKey === true}
-              onEnterKey={() => setKeyDialogOpen(true)}
+              onEnterKey={onOpenKeyDialog}
               onSync={() => runSync(false)}
               onLoad={() => fileInputRef.current?.click()}
             />
-          ) : view === "profile" && cache.profile ? (
+          ) : effectiveView === "profile" && cache.profile ? (
             <ProfileDetail profile={cache.profile} />
-          ) : view === "week" && activeWeek ? (
+          ) : effectiveView === "week" && activeWeek ? (
             <WeekDetail
               week={activeWeek}
-              eventsForDate={events.forDate}
+              eventsForDate={eventsForDate}
               onAddEvent={onAddEvent}
               onRemoveEvent={onRemoveEvent}
             />
           ) : (
-            <div className="text-[var(--muted)]">Selecteer een week in de zijbalk.</div>
+            <div className="text-muted">Selecteer een week in de zijbalk.</div>
           )}
         </main>
       </div>
@@ -280,8 +303,8 @@ export function Viewer() {
       <IntegrationsDialog
         open={integrationsOpen}
         onClose={() => setIntegrationsOpen(false)}
-        onProvidersChanged={events.refreshProviders}
-        onToast={(message, kind) => toasts.push(message, kind)}
+        onProvidersChanged={refreshProviders}
+        onToast={onToastFromDialog}
       />
     </div>
   );

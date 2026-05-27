@@ -30,6 +30,14 @@
   --color-hover: var(--hover);
   --color-accent: var(--accent);
   --color-accent-bg: var(--accent-bg);
+  --color-good: var(--good);
+  --color-good-bg: var(--good-bg);
+  --color-warn: var(--warn);
+  --color-warn-bg: var(--warn-bg);
+  --color-bad: var(--bad);
+  --color-bad-bg: var(--bad-bg);
+  --color-open: var(--open);
+  --color-open-bg: var(--open-bg);
 }
 
 body {

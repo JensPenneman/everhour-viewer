@@ -22,7 +22,7 @@ export function DailyChart({ days, eventsForDate }: DailyChartProps) {
   const maxDay = Math.max(1, ...days.map((d) => d.totalSeconds));
 
   return (
-    <div className="bg-[var(--panel)] border border-[var(--border)] rounded-xl px-5 py-4 grid grid-cols-7 gap-3 mb-7">
+    <div className="bg-panel border border-border rounded-xl px-5 py-4 grid grid-cols-7 gap-3 mb-7">
       {days.map((d) => {
         const isEmpty = d.totalSeconds === 0;
         const pct = (d.totalSeconds / maxDay) * 100;
@@ -35,13 +35,12 @@ export function DailyChart({ days, eventsForDate }: DailyChartProps) {
           <div key={d.date} className="flex flex-col items-center gap-1.5">
             <div
               className={`text-[12px] tabular-nums font-medium min-h-[18px] flex items-center gap-1.5 ${
-                isEmpty ? "text-[var(--muted-soft)]" : ""
+                isEmpty ? "text-muted-soft" : ""
               }`}
             >
               {meta ? (
                 <span
-                  className="inline-block w-1.5 h-1.5 rounded-full flex-shrink-0"
-                  style={{ background: `var(${meta.fgVar})` }}
+                  className={`inline-block w-1.5 h-1.5 rounded-full shrink-0 ${meta.dotClass}`}
                   title={primary ? `${meta.label}: ${primary.label}` : meta.label}
                   aria-hidden="true"
                 />
@@ -50,16 +49,12 @@ export function DailyChart({ days, eventsForDate }: DailyChartProps) {
             </div>
             <div className="w-full h-[88px] flex items-end">
               <div
-                className={`w-full rounded-t min-h-[2px] ${
-                  isEmpty ? "bg-[var(--border)]" : "bg-[var(--accent)]"
-                }`}
+                className={`w-full rounded-t min-h-[2px] ${isEmpty ? "bg-border" : "bg-accent"}`}
                 style={{ height: `${pct.toFixed(2)}%` }}
               />
             </div>
-            <div className="text-[11px] text-[var(--muted)]">{label}</div>
-            <div className="text-[10px] text-[var(--muted-soft)] tabular-nums">
-              {fmtDateShort(d.date)}
-            </div>
+            <div className="text-[11px] text-muted">{label}</div>
+            <div className="text-[10px] text-muted-soft tabular-nums">{fmtDateShort(d.date)}</div>
           </div>
         );
       })}

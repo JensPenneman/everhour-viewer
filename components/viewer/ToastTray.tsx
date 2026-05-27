@@ -7,9 +7,9 @@ export interface ToastTrayProps {
 }
 
 const BG_BY_KIND: Record<Toast["kind"], string> = {
-  good: "bg-[var(--good)]",
-  error: "bg-[var(--bad)]",
-  info: "bg-[var(--foreground)]",
+  good: "bg-good",
+  error: "bg-bad",
+  info: "bg-foreground",
 };
 
 /** Bottom-right toast tray. Toasts stack newest-on-top with a fade-in. */

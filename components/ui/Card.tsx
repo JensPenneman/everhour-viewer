@@ -13,16 +13,14 @@ export interface KpiCardProps {
  */
 export function KpiCard({ label, value, hint, small }: KpiCardProps) {
   return (
-    <div className="bg-[var(--panel)] border border-[var(--border)] rounded-xl px-4 py-3.5">
-      <div className="text-[var(--muted)] text-[11px] uppercase tracking-wider font-medium">
-        {label}
-      </div>
+    <div className="bg-panel border border-border rounded-xl px-4 py-3.5">
+      <div className="text-muted text-[11px] uppercase tracking-wider font-medium">{label}</div>
       <div
         className={`${small ? "text-[16px] mt-1.5" : "text-[24px] mt-1"} font-semibold tabular-nums leading-none`}
       >
         {value}
       </div>
-      {hint ? <div className="text-[var(--muted-soft)] text-[12px] mt-1.5">{hint}</div> : null}
+      {hint ? <div className="text-muted-soft text-[12px] mt-1.5">{hint}</div> : null}
     </div>
   );
 }
@@ -34,9 +32,5 @@ export interface PanelProps {
 
 /** Generic surface (`--panel` background, soft border, rounded). */
 export function Panel({ children, className = "" }: PanelProps) {
-  return (
-    <div className={`bg-[var(--panel)] border border-[var(--border)] rounded-xl ${className}`}>
-      {children}
-    </div>
-  );
+  return <div className={`bg-panel border border-border rounded-xl ${className}`}>{children}</div>;
 }

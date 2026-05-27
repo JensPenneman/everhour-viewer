@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { useState } from "react";
 import { Menu, MenuItem } from "@/components/ui";
 import { DAY_EVENT_KINDS, type DayEventKind } from "@/lib/events";
 
@@ -15,9 +15,6 @@ export interface AddEventControlProps {
  */
 export function AddEventControl({ onPick, label = "+ Markeer als…" }: AddEventControlProps) {
   const [open, setOpen] = useState(false);
-  // Capture ref so Menu's outside-click handler knows our anchor.
-  const _ref = useRef<HTMLDivElement | null>(null);
-  void _ref;
 
   return (
     <Menu
@@ -27,7 +24,7 @@ export function AddEventControl({ onPick, label = "+ Markeer als…" }: AddEvent
         <button
           type="button"
           onClick={() => setOpen((o) => !o)}
-          className="text-[12px] text-[var(--muted)] hover:text-[var(--accent)] transition-colors cursor-pointer"
+          className="text-[12px] text-muted hover:text-accent transition-colors cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-bg rounded"
           aria-haspopup="menu"
           aria-expanded={open}
         >
