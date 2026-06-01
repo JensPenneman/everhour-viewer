@@ -1,5 +1,4 @@
 import Holidays from "date-holidays";
-import { toLocalIsoDate } from "@/lib/format";
 import type { DayEvent } from "./types";
 
 /**
@@ -62,9 +61,11 @@ function holidaysForYear(year: number, opts: HolidayProviderOptions): ReadonlyAr
   const filtered: DayEvent[] = [];
   for (const h of raw) {
     if (h.type !== "public") continue;
-    // `start` is a Date; convert to local YYYY-MM-DD so it matches the
-    // way Everhour weeks are keyed.
-    const dateIso = toLocalIsoDate(new Date(h.start));
+    // `h.date` is the holiday's wall-clock date in the country's timezone,
+    // formatted `"YYYY-MM-DD hh:mm:ss [-hh:ss]"`. Take the date part directly:
+    // converting the `start` Date via the machine's local zone shifted the day
+    // by one when the runtime TZ differed from the country's (e.g. UTC in CI).
+    const dateIso = h.date.slice(0, 10);
     filtered.push({
       id: `holidays:${opts.country.toLowerCase()}:${dateIso}:${slugify(h.name)}`,
       date: dateIso,

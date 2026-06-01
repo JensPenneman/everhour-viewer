@@ -10,6 +10,7 @@ import {
   useViewerCache,
 } from "@/hooks";
 import { buildBackupFile, downloadBackup, readBackupFiles } from "@/lib/backup";
+import { toLocalIsoDate } from "@/lib/format";
 import { Header } from "./Header";
 import { IntegrationsDialog } from "./integrations";
 import { KeyDialog } from "./KeyDialog";
@@ -165,7 +166,7 @@ export function Viewer() {
       return;
     }
     const backup = buildBackupFile(cache.profile, cache.weeks);
-    downloadBackup(`everhour-backup-${new Date().toISOString().slice(0, 10)}.json`, backup);
+    downloadBackup(`everhour-backup-${toLocalIsoDate(new Date())}.json`, backup);
     toastsPush(`Backup gedownload (${cache.weeks.length} weken)`, "good");
   }, [cache.profile, cache.weeks, toastsPush]);
 
