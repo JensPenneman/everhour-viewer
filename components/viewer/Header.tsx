@@ -4,13 +4,14 @@ import type { RefObject } from "react";
 import type { EverhourProfile } from "@/lib/everhour";
 import { Button, Menu, MenuDivider, MenuItem } from "@/components/ui";
 import type { SyncProgress } from "@/hooks";
+import { fmtDuration } from "@/lib/format";
 import { Logo } from "./Logo";
 import { ProgressBar } from "./ProgressBar";
 
 export interface HeaderProps {
   readonly profile: EverhourProfile | null;
   readonly weekCount: number;
-  readonly totalHours: number;
+  readonly totalSeconds: number;
   readonly progress: SyncProgress | null;
   readonly canSync: boolean;
   readonly syncing: boolean;
@@ -33,7 +34,7 @@ export function Header(props: HeaderProps) {
   const {
     profile,
     weekCount,
-    totalHours,
+    totalSeconds,
     progress,
     canSync,
     syncing,
@@ -64,7 +65,7 @@ export function Header(props: HeaderProps) {
           <ProgressBar progress={progress} />
         ) : (
           <span className="text-muted text-[13px] truncate">
-            {summary(profile, weekCount, totalHours)}
+            {summary(profile, weekCount, totalSeconds)}
           </span>
         )}
       </div>
@@ -117,12 +118,13 @@ export function Header(props: HeaderProps) {
   );
 }
 
-function summary(profile: EverhourProfile | null, weekCount: number, totalHours: number): string {
+function summary(profile: EverhourProfile | null, weekCount: number, totalSeconds: number): string {
+  const total = fmtDuration(totalSeconds);
   if (profile) {
-    return `${profile.name} · ${weekCount} ${weekCount === 1 ? "week" : "weken"} · ${totalHours.toFixed(1)}u totaal`;
+    return `${profile.name} · ${weekCount} ${weekCount === 1 ? "week" : "weken"} · ${total} totaal`;
   }
   if (weekCount) {
-    return `${weekCount} weken · ${totalHours.toFixed(1)}u totaal`;
+    return `${weekCount} weken · ${total} totaal`;
   }
   return "Geen gegevens geladen";
 }

@@ -2,7 +2,7 @@
 
 import type { EverhourProfile, WeekRecord } from "@/lib/everhour";
 import { StatusPill } from "@/components/ui";
-import { fmtDateShort, fmtHours } from "@/lib/format";
+import { fmtDateShort, fmtDuration } from "@/lib/format";
 
 export type SidebarView = "empty" | "profile" | "week";
 
@@ -115,7 +115,7 @@ function WeekRow({
       <div className="flex items-center justify-between gap-2">
         <div className="font-semibold text-[13px] tabular-nums">{week.week.isoWeek}</div>
         <span className="tabular-nums font-medium text-[12px] text-muted">
-          {fmtHours(week.totals.seconds)}u
+          {fmtDuration(week.totals.seconds)}
         </span>
       </div>
       <div className="text-muted text-[11.5px] mt-0.5 flex items-center justify-between gap-2">

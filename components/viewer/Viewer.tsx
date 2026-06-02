@@ -248,7 +248,7 @@ export function Viewer() {
       <Header
         profile={cache.profile}
         weekCount={cache.weeks.length}
-        totalHours={cache.totalHours}
+        totalSeconds={cache.totalSeconds}
         progress={sync.progress}
         canSync={apiKey.canSync}
         syncing={sync.active}

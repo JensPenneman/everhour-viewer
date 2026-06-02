@@ -4,7 +4,7 @@ import { useMemo } from "react";
 import { Button, SectionTitle } from "@/components/ui";
 import type { DayEvent } from "@/lib/events";
 import type { WeekDay, WeekRecord } from "@/lib/everhour";
-import { capitalize, fmtDateFull, fmtHours, nlWeekday, parseLocalDate } from "@/lib/format";
+import { capitalize, fmtDateFull, fmtDuration, nlWeekday, parseLocalDate } from "@/lib/format";
 import { EventChip } from "../day-event";
 import { BreaksBand } from "./BreaksBand";
 import { ChangeLog } from "./ChangeLog";
@@ -60,7 +60,7 @@ export function DayDetail({ week, day, events, tzOffsetHours, onBack }: DayDetai
         <span>
           {day.clockIn
             ? `Aanwezig ${day.clockIn} – ${day.clockOut || "(open)"}${
-                breaks.attendanceSec != null ? ` · ${fmtHours(breaks.attendanceSec)}u` : ""
+                breaks.attendanceSec != null ? ` · ${fmtDuration(breaks.attendanceSec)}` : ""
               }`
             : "Geen prikklokgegevens"}
         </span>

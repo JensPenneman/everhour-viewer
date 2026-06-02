@@ -1,6 +1,6 @@
 "use client";
 
-import { fmtHours } from "@/lib/format";
+import { fmtDuration } from "@/lib/format";
 import type { TaskTotal } from "./utils";
 
 export interface TaskTableProps {
@@ -15,7 +15,7 @@ export function TaskTable({ tasks }: TaskTableProps) {
           <tr className="bg-[#fafafa]">
             <Th className="w-[100px]">Ticket</Th>
             <Th>Titel</Th>
-            <Th className="w-[90px] text-right">Uren</Th>
+            <Th className="w-[90px] text-right">Tijd</Th>
           </tr>
         </thead>
         <tbody>
@@ -42,7 +42,7 @@ export function TaskTable({ tasks }: TaskTableProps) {
               </td>
               <td className="px-4 py-2.5 text-[13.5px]">{t.task.name}</td>
               <td className="px-4 py-2.5 text-right tabular-nums text-[13px]">
-                {fmtHours(t.seconds)}
+                {fmtDuration(t.seconds)}
               </td>
             </tr>
           ))}

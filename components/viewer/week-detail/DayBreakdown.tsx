@@ -3,7 +3,7 @@
 import { Button } from "@/components/ui";
 import type { DayEvent, DayEventKind } from "@/lib/events";
 import type { WeekDay } from "@/lib/everhour";
-import { capitalize, fmtDateFull, fmtHours, nlWeekday, parseLocalDate } from "@/lib/format";
+import { capitalize, fmtDateFull, fmtDuration, nlWeekday, parseLocalDate } from "@/lib/format";
 import { AddEventControl, EventChip } from "../day-event";
 import { CorrectionPill, buildChangeLog, foreignCorrectionCount } from "../day-detail";
 
@@ -91,7 +91,9 @@ function DayRow({ day, ownerId, events, onAddEvent, onRemoveEvent, onOpenDay }: 
             ⚠ {foreignCount}
           </CorrectionPill>
         ) : null}
-        <span className="tabular-nums font-medium text-[13px]">{fmtHours(day.totalSeconds)}u</span>
+        <span className="tabular-nums font-medium text-[13px]">
+          {fmtDuration(day.totalSeconds)}
+        </span>
         {onOpenDay ? (
           <Button
             variant="ghost"
@@ -145,8 +147,8 @@ function DayRow({ day, ownerId, events, onAddEvent, onRemoveEvent, onOpenDay }: 
                 )}
               </span>
               <span className="flex-1">{entry.task.name}</span>
-              <span className="w-16 text-right tabular-nums text-muted">
-                {fmtHours(entry.seconds)}u
+              <span className="w-20 text-right tabular-nums text-muted">
+                {fmtDuration(entry.seconds)}
               </span>
             </div>
           ))

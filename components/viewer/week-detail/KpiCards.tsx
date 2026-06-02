@@ -2,7 +2,7 @@
 
 import { KpiCard, StatusPill } from "@/components/ui";
 import type { WeekDay, WeekRecord } from "@/lib/everhour";
-import { fmtHours } from "@/lib/format";
+import { fmtDuration } from "@/lib/format";
 
 export interface KpiCardsProps {
   readonly week: WeekRecord;
@@ -12,21 +12,25 @@ export interface KpiCardsProps {
 
 export function KpiCards({ week, days, taskCount }: KpiCardsProps) {
   const workingDays = days.filter((d) => d.totalSeconds > 0);
-  const avgPerDay = workingDays.length
-    ? workingDays.reduce((a, d) => a + d.totalSeconds, 0) / workingDays.length / 3600
+  const avgPerDaySeconds = workingDays.length
+    ? workingDays.reduce((a, d) => a + d.totalSeconds, 0) / workingDays.length
     : 0;
 
   return (
     <div className="grid grid-cols-3 gap-3 mb-7">
       <KpiCard
-        label="Totaal uren"
-        value={`${fmtHours(week.totals.seconds)}u`}
+        label="Totale tijd"
+        value={fmtDuration(week.totals.seconds)}
         hint={`${taskCount} ${taskCount === 1 ? "ticket" : "tickets"}`}
       />
       <KpiCard
         label="Werkdagen"
         value={String(workingDays.length)}
-        hint={workingDays.length ? `gem. ${avgPerDay.toFixed(2)}u/dag` : "geen werk geregistreerd"}
+        hint={
+          workingDays.length
+            ? `gem. ${fmtDuration(avgPerDaySeconds)}/dag`
+            : "geen werk geregistreerd"
+        }
       />
       <KpiCard
         label="Status"

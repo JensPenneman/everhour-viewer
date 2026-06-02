@@ -2,7 +2,7 @@
 
 import { dayEventKindMeta, type DayEvent } from "@/lib/events";
 import type { WeekDay } from "@/lib/everhour";
-import { capitalize, fmtDateShort, fmtHours, nlWeekday, parseLocalDate } from "@/lib/format";
+import { capitalize, fmtDateShort, fmtDuration, nlWeekday, parseLocalDate } from "@/lib/format";
 
 export interface DailyChartProps {
   readonly days: ReadonlyArray<WeekDay>;
@@ -45,7 +45,7 @@ export function DailyChart({ days, eventsForDate }: DailyChartProps) {
                   aria-hidden="true"
                 />
               ) : null}
-              {isEmpty ? "—" : `${fmtHours(d.totalSeconds)}u`}
+              {isEmpty ? "—" : fmtDuration(d.totalSeconds)}
             </div>
             <div className="w-full h-[88px] flex items-end">
               <div

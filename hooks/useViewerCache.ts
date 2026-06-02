@@ -10,7 +10,7 @@ export interface ViewerCacheApi {
   readonly profile: EverhourProfile | null;
   readonly weeks: ReadonlyArray<WeekRecord>;
   readonly sortedWeeks: ReadonlyArray<WeekRecord>;
-  readonly totalHours: number;
+  readonly totalSeconds: number;
   readonly setProfile: (profile: EverhourProfile | null) => void;
   /** Replace the weeks array entirely (with persistence). */
   readonly setWeeks: (weeks: ReadonlyArray<WeekRecord>) => void;
@@ -100,17 +100,14 @@ export function useViewerCache(): ViewerCacheApi {
     [weeks],
   );
 
-  const totalHours = useMemo(
-    () => weeks.reduce((acc, w) => acc + w.totals.seconds, 0) / 3600,
-    [weeks],
-  );
+  const totalSeconds = useMemo(() => weeks.reduce((acc, w) => acc + w.totals.seconds, 0), [weeks]);
 
   return {
     hydrated,
     profile,
     weeks,
     sortedWeeks,
-    totalHours,
+    totalSeconds,
     setProfile,
     setWeeks,
     upsertWeek,

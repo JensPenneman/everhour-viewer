@@ -1,6 +1,6 @@
 import { SectionTitle } from "@/components/ui";
 import type { WeekDay } from "@/lib/everhour";
-import { fmtHours, fmtSignedHours } from "@/lib/format";
+import { fmtDuration, fmtSignedDuration } from "@/lib/format";
 import { entryNetEditSeconds, foreignNetEditSeconds } from "./day-audit";
 import { EntryRow } from "./EntryRow";
 
@@ -62,7 +62,7 @@ export function EntryTable({ day, ownerId, tzOffsetHours }: EntryTableProps) {
                   Totaal
                 </td>
                 <td className="px-4 py-2.5 text-right tabular-nums text-[13px]">
-                  {fmtHours(day.totalSeconds)}u
+                  {fmtDuration(day.totalSeconds)}
                 </td>
                 <td
                   className={`px-4 py-2.5 text-right tabular-nums text-[13px] ${
@@ -73,7 +73,7 @@ export function EntryTable({ day, ownerId, tzOffsetHours }: EntryTableProps) {
                         : "text-foreground"
                   }`}
                 >
-                  {netTotal === 0 ? "—" : fmtSignedHours(netTotal)}
+                  {netTotal === 0 ? "—" : fmtSignedDuration(netTotal)}
                 </td>
                 <td className="px-4 py-2.5" />
               </tr>

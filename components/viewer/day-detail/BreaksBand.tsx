@@ -1,5 +1,5 @@
 import { KpiCard } from "@/components/ui";
-import { fmtHours } from "@/lib/format";
+import { fmtDuration } from "@/lib/format";
 import type { DayBreaks } from "./day-audit";
 import { InferredHint } from "./InferredHint";
 
@@ -31,7 +31,7 @@ export function BreaksBand({ breaks, clockIn, clockOut, taskCount }: BreaksBandP
     pauzeValue = "—";
     pauzeHint = "meer getrackt dan aanwezig";
   } else if (breaks.breakSec != null) {
-    pauzeValue = `${fmtHours(breaks.breakSec)}u`;
+    pauzeValue = fmtDuration(breaks.breakSec);
     pauzeHint = "≈ aanwezig − geregistreerd";
   } else {
     pauzeValue = "—";
@@ -42,12 +42,12 @@ export function BreaksBand({ breaks, clockIn, clockOut, taskCount }: BreaksBandP
     <div className="grid grid-cols-3 gap-3 mb-5">
       <KpiCard
         label="Aanwezig"
-        value={breaks.attendanceSec != null ? `${fmtHours(breaks.attendanceSec)}u` : "—"}
+        value={breaks.attendanceSec != null ? fmtDuration(breaks.attendanceSec) : "—"}
         hint={attendanceHint}
       />
       <KpiCard
         label="Geregistreerd"
-        value={`${fmtHours(breaks.trackedSec)}u`}
+        value={fmtDuration(breaks.trackedSec)}
         hint={`${taskCount} ${taskCount === 1 ? "ticket" : "tickets"}`}
       />
       <KpiCard

@@ -1,5 +1,5 @@
 import type { TimeEdit, WeekEntry } from "@/lib/everhour";
-import { fmtHours, fmtLocalTime, fmtSignedHours } from "@/lib/format";
+import { fmtDuration, fmtLocalTime, fmtSignedDuration } from "@/lib/format";
 import { isForeignActor, resolveActorLabel } from "./day-audit";
 
 export interface HistoryLedgerProps {
@@ -90,9 +90,9 @@ export function HistoryLedger({ entry, ownerId, tzOffsetHours }: HistoryLedgerPr
                   <span aria-hidden="true">{meta.icon}</span> {meta.label}
                 </Td>
                 <Td className={`text-right tabular-nums font-medium ${deltaColor}`}>
-                  {isComment ? "—" : fmtSignedHours(h.deltaSeconds)}
+                  {isComment ? "—" : fmtSignedDuration(h.deltaSeconds)}
                 </Td>
-                <Td className="text-right tabular-nums text-muted">→ {fmtHours(cumulative)}u</Td>
+                <Td className="text-right tabular-nums text-muted">→ {fmtDuration(cumulative)}</Td>
                 <Td className={`whitespace-nowrap ${actorColor}`}>
                   {foreign ? resolveActorLabel(h.byName, h.by) : "Jij"}
                 </Td>

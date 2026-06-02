@@ -1,34 +1,13 @@
 import { describe, it, expect } from "vitest";
 import {
   fmtDuration,
-  fmtHours,
   fmtLocalTime,
-  fmtSignedHours,
-  fmtSignedMinutes,
+  fmtSignedDuration,
   localIsoDate,
   localMinutesOfDay,
-  totalHours,
 } from "@/lib/format/time";
 
 const MINUS = "−"; // U+2212, not a hyphen
-
-describe("time helpers", () => {
-  it("formats hours with two decimals", () => {
-    expect(fmtHours(3600)).toBe("1.00");
-    expect(fmtHours(5400)).toBe("1.50");
-    expect(fmtHours(3700)).toBe("1.03");
-  });
-
-  it("formats zero seconds", () => {
-    expect(fmtHours(0)).toBe("0.00");
-  });
-
-  it("sums and rounds total hours to two decimals", () => {
-    expect(totalHours([3600, 3600, 3600])).toBe(3);
-    expect(totalHours([3700, 3700])).toBe(2.06);
-    expect(totalHours([])).toBe(0);
-  });
-});
 
 describe("fmtDuration", () => {
   it("formats sub-hour durations as minutes", () => {
@@ -46,30 +25,29 @@ describe("fmtDuration", () => {
     expect(fmtDuration(8220)).toBe("2u 17m");
   });
 
+  it("rounds to whole minutes", () => {
+    expect(fmtDuration(2700)).toBe("45m"); // 0.75u, never "0.75u"
+    expect(fmtDuration(37_932)).toBe("10u 32m"); // a real weekly total
+  });
+
   it("uses magnitude for negative input", () => {
     expect(fmtDuration(-1620)).toBe("27m");
   });
 });
 
-describe("fmtSignedMinutes", () => {
+describe("fmtSignedDuration", () => {
   it("renders a real minus for reductions", () => {
-    expect(fmtSignedMinutes(-1620)).toBe(`${MINUS}27 min`);
+    expect(fmtSignedDuration(-1620)).toBe(`${MINUS}27m`);
+    expect(fmtSignedDuration(-4500)).toBe(`${MINUS}1u 15m`);
   });
 
   it("renders a plus for additions", () => {
-    expect(fmtSignedMinutes(2280)).toBe("+38 min");
+    expect(fmtSignedDuration(2280)).toBe("+38m");
+    expect(fmtSignedDuration(4500)).toBe("+1u 15m");
   });
 
   it("renders an em dash for no change", () => {
-    expect(fmtSignedMinutes(0)).toBe("—");
-  });
-});
-
-describe("fmtSignedHours", () => {
-  it("renders signed two-decimal hours", () => {
-    expect(fmtSignedHours(1620)).toBe("+0.45u");
-    expect(fmtSignedHours(-1620)).toBe(`${MINUS}0.45u`);
-    expect(fmtSignedHours(0)).toBe("—");
+    expect(fmtSignedDuration(0)).toBe("—");
   });
 });
 

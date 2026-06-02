@@ -1,10 +1,7 @@
 export { fmtDateShort, fmtDateFull, parseLocalDate, toLocalIsoDate } from "./date";
 export {
-  fmtHours,
-  totalHours,
   fmtDuration,
-  fmtSignedMinutes,
-  fmtSignedHours,
+  fmtSignedDuration,
   fmtLocalTime,
   localMinutesOfDay,
   localIsoDate,

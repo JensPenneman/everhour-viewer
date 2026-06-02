@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import type { WeekEntry } from "@/lib/everhour";
-import { fmtHours, fmtSignedHours } from "@/lib/format";
+import { fmtDuration, fmtSignedDuration } from "@/lib/format";
 import { CorrectionPill } from "./CorrectionPill";
 import {
   entryNetEditSeconds,
@@ -91,10 +91,10 @@ export function EntryRow({ entry, ownerId, tzOffsetHours }: EntryRowProps) {
         </td>
         <td className="px-4 py-2.5 text-[13.5px]">{entry.task.name}</td>
         <td className="px-4 py-2.5 text-right tabular-nums text-[13px]">
-          {fmtHours(entry.seconds)}u
+          {fmtDuration(entry.seconds)}
         </td>
         <td className={`px-4 py-2.5 text-right tabular-nums text-[13px] font-medium ${wijzColor}`}>
-          {netEdit === 0 ? "—" : fmtSignedHours(netEdit)}
+          {netEdit === 0 ? "—" : fmtSignedDuration(netEdit)}
         </td>
         <td className="px-4 py-2.5 text-[12.5px] whitespace-nowrap">
           {correctedByOther && foreignActor ? (

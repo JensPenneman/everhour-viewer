@@ -1,29 +1,14 @@
-/**
- * Format a count of seconds as a fixed-decimal hour string.
- *
- * Always returns 2 decimals; `8.20` rather than `8.2` so columns stay
- * visually aligned in tabular numerics. No unit suffix is appended;
- * callers compose `${fmtHours(s)}u` themselves when an `u` is needed.
- */
-export function fmtHours(seconds: number): string {
-  return (seconds / 3600).toFixed(2);
-}
-
-/** Sum a list of seconds and return total hours as a number (rounded to 0.01). */
-export function totalHours(seconds: ReadonlyArray<number>): number {
-  const sum = seconds.reduce((a, b) => a + b, 0);
-  return Math.round((sum / 3600) * 100) / 100;
-}
-
 /** Real Unicode minus sign (U+2212) — aligns under tabular-nums, unlike a hyphen. */
 const MINUS = "−";
 
 /**
- * Human duration in Dutch, e.g. `2880 → "48m"`, `4500 → "1u 15m"`, `0 → "0m"`.
+ * Human duration in Dutch hours + minutes — the single way time is displayed.
+ * `2880 → "48m"`, `4500 → "1u 15m"`, `7200 → "2u"`, `0 → "0m"`.
  *
- * Rounds to whole minutes — the audit data is minute-grained in practice and
- * sub-minute precision only adds noise. Negative inputs are treated as their
- * magnitude; callers that need a sign use {@link fmtSignedMinutes}.
+ * Decimal hours ("8.25u") force the reader to do mental arithmetic, so every
+ * duration in the UI routes through this instead. Rounds to whole minutes
+ * (the data is minute-grained in practice); negative inputs use their
+ * magnitude — callers that need a sign use {@link fmtSignedDuration}.
  */
 export function fmtDuration(seconds: number): string {
   const totalMin = Math.round(Math.abs(seconds) / 60);
@@ -35,23 +20,12 @@ export function fmtDuration(seconds: number): string {
 }
 
 /**
- * Signed minute delta for an edit, e.g. `-1620 → "−27 min"`, `+2280 → "+38 min"`,
- * `0 → "—"`. Uses the real minus glyph so signed columns stay aligned.
+ * Signed duration for an edit delta, e.g. `-1620 → "−27m"`, `+4500 → "+1u 15m"`,
+ * `0 → "—"`. Real minus glyph so signed columns stay aligned under tabular-nums.
  */
-export function fmtSignedMinutes(seconds: number): string {
+export function fmtSignedDuration(seconds: number): string {
   if (seconds === 0) return "—";
-  const min = Math.round(Math.abs(seconds) / 60);
-  return `${seconds < 0 ? MINUS : "+"}${min} min`;
-}
-
-/**
- * Signed hour delta for an edit, e.g. `+1620 → "+0.45u"`, `-1620 → "−0.45u"`,
- * `0 → "—"`.
- */
-export function fmtSignedHours(seconds: number): string {
-  if (seconds === 0) return "—";
-  const hours = (Math.abs(seconds) / 3600).toFixed(2);
-  return `${seconds < 0 ? MINUS : "+"}${hours}u`;
+  return `${seconds < 0 ? MINUS : "+"}${fmtDuration(seconds)}`;
 }
 
 /**

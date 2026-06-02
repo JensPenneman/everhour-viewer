@@ -2,6 +2,7 @@
 
 import { useCallback, useRef, useState } from "react";
 import type { EverhourProfile, WeekRecord } from "@/lib/everhour";
+import { fmtDuration } from "@/lib/format";
 import { readNdjsonStream } from "@/lib/streaming/ndjson";
 import type { SyncEvent } from "@/server/sync";
 
@@ -154,7 +155,7 @@ export function useStreamingSync(): StreamingSyncApi {
               phase: "processing",
               current: event.current,
               total: event.total,
-              message: `Week ${event.current}/${event.total}: ${event.week.week.isoWeek} (${(event.week.totals.seconds / 3600).toFixed(2)}u)`,
+              message: `Week ${event.current}/${event.total}: ${event.week.week.isoWeek} (${fmtDuration(event.week.totals.seconds)})`,
               counts: { ...counts },
             });
             return;

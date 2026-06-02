@@ -2,7 +2,7 @@ import {
   fmtDateShort,
   fmtDuration,
   fmtLocalTime,
-  fmtSignedMinutes,
+  fmtSignedDuration,
   localIsoDate,
 } from "@/lib/format";
 import type { ChangeRow as ChangeRowData } from "./day-audit";
@@ -66,7 +66,7 @@ export function ChangeRow({ row, dayDate, tzOffsetHours }: ChangeRowProps) {
           <TaskRef url={row.entry.task.url} linearKey={linearKey} name={row.entry.task.name} />
         </div>
         <div className={`tabular-nums font-semibold text-[13px] shrink-0 ${deltaColor}`}>
-          {isComment ? "—" : fmtSignedMinutes(edit.deltaSeconds)}
+          {isComment ? "—" : fmtSignedDuration(edit.deltaSeconds)}
         </div>
       </div>
 
