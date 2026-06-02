@@ -26,7 +26,6 @@ export default function HomePage() {
 
   return (
     <TodayView
-      apiKey={apiKey.readUserKey()}
       canTrack={apiKey.canSync}
       profile={cache.profile}
       weeks={cache.weeks}

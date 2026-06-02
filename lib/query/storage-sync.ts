@@ -3,12 +3,17 @@
 import { useEffect } from "react";
 import { type QueryClient, useQueryClient } from "@tanstack/react-query";
 import { STORAGE_KEYS } from "@/lib/storage";
-import { authKeys, eventKeys, liveKeys, syncKeys } from "./keys";
+import { authKeys, eventKeys } from "./keys";
 
-/** Refetch every server-backed query — e.g. after the API key changes. */
+/**
+ * Refetch every query after the API key changes — the credential the tRPC
+ * (server) queries authenticate with may now differ. Invalidating broadly is
+ * cheap here: the client-owned weeks/profile queries just re-derive their
+ * current cached value, while the tRPC live/capability queries refetch with
+ * the new key header.
+ */
 export function invalidateServerQueries(client: QueryClient): void {
-  void client.invalidateQueries({ queryKey: liveKeys.all });
-  void client.invalidateQueries({ queryKey: syncKeys.capability() });
+  void client.invalidateQueries();
 }
 
 /**

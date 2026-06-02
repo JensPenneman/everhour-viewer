@@ -5,20 +5,12 @@ export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 /**
- * GET /api/sync — minimal capability probe.
- *
- * Used by the client at boot to decide whether the empty state should
- * prompt for a key (no env key on server) or allow direct sync (env key
- * present, dev-mode convenience).
- *
- * Crucially: this **never returns the key itself**.
- */
-export function GET() {
-  return NextResponse.json({ hasEnvKey: !!process.env.EVERHOUR_API_KEY });
-}
-
-/**
  * POST /api/sync — streaming NDJSON sync.
+ *
+ * Stays a dedicated streaming route (not tRPC): the response is a long-lived
+ * NDJSON event stream and the request carries a potentially large `knownWeeks`
+ * body, which tRPC's SSE subscriptions don't fit. The env-key capability probe
+ * moved to the tRPC `system.capabilities` query.
  *
  * Key resolution order:
  *   1. `x-everhour-key` header (browser-supplied, primary path),

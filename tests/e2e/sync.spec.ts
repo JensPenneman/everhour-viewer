@@ -1,4 +1,19 @@
 import { expect, test, type Route } from "@playwright/test";
+import { mockTrpc } from "./_trpc";
+
+const IDLE_TIMER = { running: false, durationSeconds: 0, startedAt: null, task: null };
+
+/** tRPC mocks shared by every sync test: env key present + idle live data, so
+ * the post-sync Today view never hits the real backend. */
+async function mockLiveTrpc(page: Parameters<typeof mockTrpc>[0]): Promise<void> {
+  await mockTrpc(page, {
+    "system.capabilities": () => ({ hasEnvKey: true }),
+    "timer.current": () => IDLE_TIMER,
+    "clock.today": () => ({ date: "2026-05-22", clockedIn: false, clockIn: null, clockOut: null }),
+    "time.range": () => [],
+    "tasks.search": () => [],
+  });
+}
 
 /**
  * Sync E2E tests run against a mocked /api/sync endpoint — we don't want
@@ -101,14 +116,11 @@ async function mockSync(route: Route, weeks: number, counts: SyncCounts): Promis
 test.describe("Sync flow (mocked)", () => {
   test.beforeEach(async ({ page }) => {
     await page.addInitScript(() => window.localStorage.clear());
+    await mockLiveTrpc(page);
   });
 
   test("streams weeks and shows a success toast", async ({ page }) => {
     await page.route("**/api/sync", async (route) => {
-      if (route.request().method() === "GET") {
-        await route.fulfill({ status: 200, body: JSON.stringify({ hasEnvKey: true }) });
-        return;
-      }
       await mockSync(route, 3, { new: 3, updated: 0, skipped: 0, totalWeeks: 3 });
     });
 
@@ -155,10 +167,6 @@ test.describe("Sync flow (mocked)", () => {
 
     let postBody: { knownWeeks?: { isoWeek: string }[] } | undefined;
     await page.route("**/api/sync", async (route) => {
-      if (route.request().method() === "GET") {
-        await route.fulfill({ status: 200, body: JSON.stringify({ hasEnvKey: true }) });
-        return;
-      }
       postBody = route.request().postDataJSON();
       await mockSync(route, 0, { new: 0, updated: 0, skipped: 1, totalWeeks: 1 });
     });
@@ -176,10 +184,6 @@ test.describe("Sync flow (mocked)", () => {
 
   test("selecting a week navigates to its real route", async ({ page }) => {
     await page.route("**/api/sync", async (route) => {
-      if (route.request().method() === "GET") {
-        await route.fulfill({ status: 200, body: JSON.stringify({ hasEnvKey: true }) });
-        return;
-      }
       await mockSync(route, 3, { new: 3, updated: 0, skipped: 0, totalWeeks: 3 });
     });
 

@@ -1,6 +1,7 @@
 /**
- * Public surface of the query layer — the single communication layer for
- * server calls and localStorage-backed state (TanStack Query).
+ * Public surface of the query layer — the persisted TanStack Query client and
+ * the keys for client-owned caches. Server I/O goes through tRPC
+ * (see `@/lib/trpc/client`); streaming sync stays on `/api/sync`.
  */
 export { makeQueryClient } from "./client";
 export {
@@ -11,7 +12,6 @@ export {
   PERSIST_KEY,
   PERSIST_MAX_AGE,
 } from "./persister";
-export { liveFetch, type LiveFetchInit } from "./fetcher";
 export { invalidateServerQueries, useStorageSync } from "./storage-sync";
 export { useOnline } from "./use-online";
-export { authKeys, eventKeys, liveKeys, profileKey, syncKeys, timesheetKeys } from "./keys";
+export { authKeys, eventKeys, profileKey, timesheetKeys } from "./keys";

@@ -2,7 +2,8 @@
 
 import { useCallback } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { authKeys, invalidateServerQueries, syncKeys } from "@/lib/query";
+import { authKeys, invalidateServerQueries } from "@/lib/query";
+import { useTRPC } from "@/lib/trpc/client";
 import { readApiKey, writeApiKey } from "@/lib/storage";
 
 export interface ApiKeyApi {
@@ -29,6 +30,7 @@ export interface ApiKeyApi {
  */
 export function useApiKey(): ApiKeyApi {
   const client = useQueryClient();
+  const trpc = useTRPC();
 
   const { data: userKey } = useQuery({
     queryKey: authKeys.apiKey(),
@@ -37,16 +39,13 @@ export function useApiKey(): ApiKeyApi {
     gcTime: Infinity,
   });
 
-  const { data: hasEnvKey = null } = useQuery({
-    queryKey: syncKeys.capability(),
-    queryFn: async () => {
-      const resp = await fetch("/api/sync");
-      const data = (await resp.json()) as { hasEnvKey: boolean };
-      return data.hasEnvKey;
-    },
-    staleTime: 5 * 60_000,
-    retry: 1,
-  });
+  const { data: hasEnvKey = null } = useQuery(
+    trpc.system.capabilities.queryOptions(undefined, {
+      staleTime: 5 * 60_000,
+      retry: 1,
+      select: (data) => data.hasEnvKey,
+    }),
+  );
 
   const { mutate: mutateKey } = useMutation({
     mutationFn: (value: string) => {

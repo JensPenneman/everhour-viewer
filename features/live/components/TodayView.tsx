@@ -13,8 +13,6 @@ import { Targets } from "./Targets";
 import { TodayEntries } from "./TodayEntries";
 
 export interface TodayViewProps {
-  /** Stored user key for the request header (may be null when an env key is used). */
-  readonly apiKey: string | null;
   /** Whether tracking is possible at all — a user key or the server env key. */
   readonly canTrack: boolean;
   readonly profile: EverhourProfile | null;
@@ -27,17 +25,10 @@ export interface TodayViewProps {
  * The live "Vandaag" surface — start/stop timers, watch the day/week targets
  * tick down, and see today's tracked time. The active-use half of the app.
  */
-export function TodayView({
-  apiKey,
-  canTrack,
-  profile,
-  weeks,
-  onEnterKey,
-  onSync,
-}: TodayViewProps) {
+export function TodayView({ canTrack, profile, weeks, onEnterKey, onSync }: TodayViewProps) {
   const today = useMemo(() => toLocalIsoDate(new Date()), []);
-  const live = useLive(apiKey, profile?.id ?? null, today, canTrack);
-  const search = useTaskSearch(apiKey);
+  const live = useLive(profile?.id ?? null, today, canTrack);
+  const search = useTaskSearch();
   const recent = useMemo(() => recentTasks(weeks, 8), [weeks]);
 
   const runningTaskId = live.timer?.task?.id ?? null;

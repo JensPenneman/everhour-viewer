@@ -3,10 +3,10 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { differenceInSeconds, startOfWeek } from "date-fns";
-import { errorMessage, errorStatus } from "@/lib/errors";
+import { errorMessage } from "@/lib/errors";
 import type { ClockStatus, LiveEntry, Timer } from "@/lib/everhour";
 import { parseLocalDate, toLocalIsoDate } from "@/lib/format";
-import { liveFetch, liveKeys } from "@/lib/query";
+import { everhourStatusOf, useTRPC } from "@/lib/trpc/client";
 
 const POLL_MS = 20_000;
 const EMPTY_ENTRIES: ReadonlyArray<LiveEntry> = Object.freeze([]);
@@ -48,96 +48,87 @@ function mondayOf(today: string): string {
 /**
  * Owns all live state for the Vandaag view: the running timer (polled every
  * 20s + on focus, ticked locally for a smooth elapsed display), today's
- * attendance clock, and this week-to-date's committed entries — all as
- * TanStack queries. Actions (start/stop/clock) are mutations with `retry:
- * false` (no double-start) that invalidate the timer/clock/time queries so
- * totals never drift (starting a timer also auto-clocks-in upstream).
+ * attendance clock, and this week-to-date's committed entries — all via tRPC
+ * (`timer`/`clock`/`time`) on the shared, type-safe query layer. Actions are
+ * tRPC mutations with `retry: false` (no double-start) that invalidate the
+ * timer/clock/time queries so totals never drift (starting a timer also
+ * auto-clocks-in upstream).
  *
- * The public `LiveApi` is unchanged; the API key is passed in for the request
- * header but is never part of a query key (a key change is handled by
- * invalidation, see the storage→invalidation bridge).
+ * The API key is attached by the tRPC link, so it's no longer a hook argument.
  */
-export function useLive(
-  apiKey: string | null,
-  userId: number | null,
-  today: string,
-  enabled = true,
-): LiveApi {
+export function useLive(userId: number | null, today: string, enabled = true): LiveApi {
   const ready = enabled && userId !== null;
   const weekStart = useMemo(() => mondayOf(today), [today]);
-  const client = useQueryClient();
+  const trpc = useTRPC();
+  const queryClient = useQueryClient();
 
   const [nowMs, setNowMs] = useState(() => Date.now());
   const [actionError, setActionError] = useState<string | null>(null);
   const [clockControlUnavailable, setClockControlUnavailable] = useState(false);
 
-  const timerQuery = useQuery({
-    queryKey: liveKeys.timer(),
-    queryFn: ({ signal }) => liveFetch<Timer>("/api/timer", apiKey, { signal }),
-    enabled: ready,
-    refetchInterval: POLL_MS,
-    refetchOnWindowFocus: true,
-    staleTime: 0,
-    gcTime: 60_000,
-  });
+  const timerQuery = useQuery(
+    trpc.timer.current.queryOptions(undefined, {
+      enabled: ready,
+      refetchInterval: POLL_MS,
+      refetchOnWindowFocus: true,
+      staleTime: 0,
+      gcTime: 60_000,
+    }),
+  );
 
-  const clockQuery = useQuery({
-    queryKey: ready ? liveKeys.clock(userId, today) : liveKeys.clock(-1, today),
-    queryFn: ({ signal }) =>
-      liveFetch<ClockStatus>(`/api/clock?userId=${userId}&today=${today}`, apiKey, { signal }),
-    enabled: ready,
-    staleTime: 30_000,
-  });
+  const clockQuery = useQuery(
+    trpc.clock.today.queryOptions(
+      { userId: userId ?? -1, today },
+      { enabled: ready, staleTime: 30_000 },
+    ),
+  );
 
-  const timeQuery = useQuery({
-    queryKey: ready ? liveKeys.time(userId, weekStart, today) : liveKeys.time(-1, weekStart, today),
-    queryFn: ({ signal }) =>
-      liveFetch<LiveEntry[]>(`/api/time?userId=${userId}&from=${weekStart}&to=${today}`, apiKey, {
-        signal,
-      }),
-    enabled: ready,
-    staleTime: 30_000,
-  });
+  const timeQuery = useQuery(
+    trpc.time.range.queryOptions(
+      { userId: userId ?? -1, from: weekStart, to: today },
+      { enabled: ready, staleTime: 30_000 },
+    ),
+  );
 
   const invalidateLive = useCallback(() => {
-    void client.invalidateQueries({ queryKey: liveKeys.all });
-  }, [client]);
+    void queryClient.invalidateQueries(trpc.timer.pathFilter());
+    void queryClient.invalidateQueries(trpc.clock.pathFilter());
+    void queryClient.invalidateQueries(trpc.time.pathFilter());
+  }, [queryClient, trpc]);
 
-  const startMutation = useMutation({
-    mutationFn: (taskId: string) =>
-      liveFetch<Timer>("/api/timer", apiKey, { method: "POST", body: { taskId } }),
-    retry: false,
-    onMutate: () => setActionError(null),
-    onSuccess: (timer) => {
-      client.setQueryData(liveKeys.timer(), timer);
-      invalidateLive(); // committed totals + auto clock-in change after starting
-    },
-    onError: (e) => setActionError(errorMessage(e) || "Actie mislukt"),
-  });
+  const startMutation = useMutation(
+    trpc.timer.start.mutationOptions({
+      onMutate: () => setActionError(null),
+      onSuccess: (timer) => {
+        queryClient.setQueryData(trpc.timer.current.queryKey(), timer);
+        invalidateLive(); // committed totals + auto clock-in change after starting
+      },
+      onError: (e) => setActionError(errorMessage(e) || "Actie mislukt"),
+    }),
+  );
 
-  const stopMutation = useMutation({
-    mutationFn: () => liveFetch<Timer>("/api/timer", apiKey, { method: "DELETE" }),
-    retry: false,
-    onMutate: () => setActionError(null),
-    onSuccess: (timer) => {
-      client.setQueryData(liveKeys.timer(), timer);
-      invalidateLive(); // the stopped session is now committed
-    },
-    onError: (e) => setActionError(errorMessage(e) || "Actie mislukt"),
-  });
+  const stopMutation = useMutation(
+    trpc.timer.stop.mutationOptions({
+      onMutate: () => setActionError(null),
+      onSuccess: (timer) => {
+        queryClient.setQueryData(trpc.timer.current.queryKey(), timer);
+        invalidateLive(); // the stopped session is now committed
+      },
+      onError: (e) => setActionError(errorMessage(e) || "Actie mislukt"),
+    }),
+  );
 
-  const clockMutation = useMutation({
-    mutationFn: (action: "in" | "out") =>
-      liveFetch("/api/clock", apiKey, { method: "POST", body: { action } }),
-    retry: false,
-    onMutate: () => setActionError(null),
-    onSuccess: () => invalidateLive(),
-    onError: (e) => {
-      const status = errorStatus(e);
-      if (status !== undefined && status >= 400 && status < 500) setClockControlUnavailable(true);
-      setActionError(errorMessage(e) || "Actie mislukt");
-    },
-  });
+  const clockMutation = useMutation(
+    trpc.clock.set.mutationOptions({
+      onMutate: () => setActionError(null),
+      onSuccess: () => invalidateLive(),
+      onError: (e) => {
+        const status = everhourStatusOf(e);
+        if (status !== null && status >= 400 && status < 500) setClockControlUnavailable(true);
+        setActionError(errorMessage(e) || "Actie mislukt");
+      },
+    }),
+  );
 
   // 1s tick only while a timer is running, so the elapsed display stays live
   // without churning renders when idle.
@@ -150,7 +141,7 @@ export function useLive(
 
   const start = useCallback(
     async (taskId: string) => {
-      await startMutation.mutateAsync(taskId).catch(() => undefined);
+      await startMutation.mutateAsync({ taskId }).catch(() => undefined);
     },
     [startMutation],
   );
@@ -158,10 +149,10 @@ export function useLive(
     await stopMutation.mutateAsync().catch(() => undefined);
   }, [stopMutation]);
   const clockIn = useCallback(async () => {
-    await clockMutation.mutateAsync("in").catch(() => undefined);
+    await clockMutation.mutateAsync({ action: "in" }).catch(() => undefined);
   }, [clockMutation]);
   const clockOut = useCallback(async () => {
-    await clockMutation.mutateAsync("out").catch(() => undefined);
+    await clockMutation.mutateAsync({ action: "out" }).catch(() => undefined);
   }, [clockMutation]);
 
   const timer = timerQuery.data ?? null;

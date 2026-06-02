@@ -1,4 +1,5 @@
 import { expect, test, type Page } from "@playwright/test";
+import { mockTrpc } from "./_trpc";
 
 /**
  * Live "Vandaag" timer flow against fully mocked API routes — no real
@@ -59,11 +60,8 @@ const IDLE = { running: false, durationSeconds: 0, startedAt: null, task: null }
 async function installMocks(page: Page): Promise<void> {
   let running = false;
 
+  // Streaming sync stays a dedicated NDJSON route (not tRPC).
   await page.route("**/api/sync", async (route) => {
-    if (route.request().method() === "GET") {
-      await route.fulfill({ status: 200, body: JSON.stringify({ hasEnvKey: true }) });
-      return;
-    }
     const ndjson =
       [
         JSON.stringify({ type: "profile", profile: PROFILE }),
@@ -78,32 +76,29 @@ async function installMocks(page: Page): Promise<void> {
     });
   });
 
-  await page.route("**/api/timer", async (route) => {
-    const method = route.request().method();
-    if (method === "POST") running = true;
-    if (method === "DELETE") running = false;
-    await route.fulfill({ status: 200, body: JSON.stringify(running ? RUNNING : IDLE) });
+  // Everything else is tRPC. A start/stop mutation toggles `running`, which
+  // the polled `timer.current` query reflects.
+  await mockTrpc(page, {
+    "system.capabilities": () => ({ hasEnvKey: true }),
+    "timer.current": () => (running ? RUNNING : IDLE),
+    "timer.start": () => {
+      running = true;
+      return RUNNING;
+    },
+    "timer.stop": () => {
+      running = false;
+      return IDLE;
+    },
+    "clock.today": () => ({
+      date: "2026-06-02",
+      clockedIn: false,
+      clockIn: null,
+      clockOut: null,
+    }),
+    "clock.set": () => ({ ok: true }),
+    "time.range": () => [],
+    "tasks.search": () => [],
   });
-
-  await page.route("**/api/clock**", async (route) => {
-    if (route.request().method() === "GET") {
-      await route.fulfill({
-        status: 200,
-        body: JSON.stringify({
-          date: "2026-06-02",
-          clockedIn: false,
-          clockIn: null,
-          clockOut: null,
-        }),
-      });
-    } else {
-      await route.fulfill({ status: 200, body: JSON.stringify({ ok: true }) });
-    }
-  });
-
-  // Regex (not a glob) so `/api/time?…` can't also shadow `/api/timer`.
-  await page.route(/\/api\/time\?/, (route) => route.fulfill({ status: 200, body: "[]" }));
-  await page.route(/\/api\/tasks(\?|$)/, (route) => route.fulfill({ status: 200, body: "[]" }));
 }
 
 test.describe("Vandaag — live timer (mocked)", () => {

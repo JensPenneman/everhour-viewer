@@ -12,6 +12,7 @@ import {
   shouldDehydrateQuery,
   useStorageSync,
 } from "@/lib/query";
+import { makeTRPCClient, TRPCProvider } from "@/lib/trpc/client";
 
 /**
  * Mounts the TanStack Query client + localStorage persistence for the whole
@@ -28,6 +29,7 @@ import {
 export function AppProviders({ children }: { children: React.ReactNode }) {
   const [client] = useState(makeQueryClient);
   const [persister] = useState(createPersister);
+  const [trpcClient] = useState(makeTRPCClient);
 
   return (
     <PersistQueryClientProvider
@@ -40,11 +42,13 @@ export function AppProviders({ children }: { children: React.ReactNode }) {
       }}
       onSuccess={() => migrateLegacyCache(client)}
     >
-      <StorageSync />
-      {children}
-      {process.env.NODE_ENV === "development" ? (
-        <ReactQueryDevtools initialIsOpen={false} buttonPosition="bottom-left" />
-      ) : null}
+      <TRPCProvider trpcClient={trpcClient} queryClient={client}>
+        <StorageSync />
+        {children}
+        {process.env.NODE_ENV === "development" ? (
+          <ReactQueryDevtools initialIsOpen={false} buttonPosition="bottom-left" />
+        ) : null}
+      </TRPCProvider>
     </PersistQueryClientProvider>
   );
 }
