@@ -7,6 +7,8 @@
  * server sanitises into these shapes before sending them to the client.
  */
 
+import type { JsonValue } from "@/lib/json";
+
 export type ApprovalStatus = "pending" | "approved" | "rejected" | "unsubmitted";
 
 /**
@@ -33,7 +35,8 @@ export interface EverhourProfile {
   readonly timezone: number | null;
   readonly capacity: number | null;
   readonly cost: number | null;
-  readonly costHistory: unknown;
+  /** Opaque Everhour cost-history blob — stored/round-tripped, never read. */
+  readonly costHistory: JsonValue | null;
   readonly createdAt: string | null;
   readonly groups: ReadonlyArray<{ readonly id: number; readonly name: string }> | null;
 }

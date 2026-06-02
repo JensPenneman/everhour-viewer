@@ -79,44 +79,69 @@ export async function readBackupFiles(files: ReadonlyArray<File>): Promise<Loade
   const map = new Map<string, WeekRecord>();
 
   for (const f of files) {
-    if (!f.name.endsWith(".json")) continue;
+    if (!f.name.endsWith(".json") || f.name === "index.json") continue;
+
+    let data: unknown;
     try {
-      const data = JSON.parse(await f.text()) as Record<string, unknown>;
-      if (looksLikeProfile(f.name, data)) {
-        profile = data as unknown as EverhourProfile;
-        hasProfile = true;
-        continue;
-      }
-      if (f.name === "index.json") continue;
-      if (data["profile"] && Array.isArray((data as { weeks?: unknown }).weeks)) {
-        profile = data["profile"] as EverhourProfile;
-        hasProfile = true;
-        for (const w of (data as { weeks: WeekRecord[] }).weeks) {
-          map.set(w.week.isoWeek, w);
-        }
-        continue;
-      }
-      if (
-        (data as { week?: { isoWeek?: unknown } }).week !== undefined &&
-        Array.isArray((data as { days?: unknown }).days)
-      ) {
-        const w = data as unknown as WeekRecord;
-        map.set(w.week.isoWeek, w);
-      }
+      data = JSON.parse(await f.text());
     } catch {
-      // skip unreadable file
+      continue; // skip unreadable / malformed file
     }
+    if (!isRecord(data)) continue;
+
+    // Consolidated backup: `{ profile, weeks }`.
+    if (Array.isArray(data["weeks"])) {
+      const p = data["profile"];
+      if (isProfile(p)) {
+        profile = p;
+        hasProfile = true;
+      }
+      for (const w of data["weeks"]) {
+        if (isWeekRecord(w)) map.set(w.week.isoWeek, w);
+      }
+      continue;
+    }
+
+    // Standalone profile file.
+    if (isProfile(data)) {
+      profile = data;
+      hasProfile = true;
+      continue;
+    }
+
+    // Single-week file (`{ week, days, … }`).
+    if (isWeekRecord(data)) map.set(data.week.isoWeek, data);
   }
 
   const weeks = [...map.values()];
   return { profile, weeks, hasProfile, hasWeeks: weeks.length > 0 };
 }
 
-function looksLikeProfile(name: string, data: Record<string, unknown>): boolean {
-  if (name === "profile.json") return true;
+function isRecord(v: unknown): v is Record<string, unknown> {
+  return typeof v === "object" && v !== null && !Array.isArray(v);
+}
+
+/**
+ * Structural check that an imported value is a stored {@link WeekRecord}.
+ *
+ * Validates the discriminating fields the cache keys on (`week.isoWeek`, a
+ * `days` array) rather than every leaf — imported data is trusted to the same
+ * degree the in-browser cache is, but a near-miss file is rejected instead of
+ * being blindly cast into the cache.
+ */
+function isWeekRecord(v: unknown): v is WeekRecord {
+  if (!isRecord(v)) return false;
+  const week = v["week"];
+  return isRecord(week) && typeof week["isoWeek"] === "string" && Array.isArray(v["days"]);
+}
+
+/** Structural check that an imported value is a stored {@link EverhourProfile}. */
+function isProfile(v: unknown): v is EverhourProfile {
   return (
-    data["role"] !== undefined &&
-    data["email"] !== undefined &&
-    (data as { weeks?: unknown }).weeks === undefined
+    isRecord(v) &&
+    typeof v["id"] === "number" &&
+    typeof v["name"] === "string" &&
+    typeof v["email"] === "string" &&
+    !("weeks" in v)
   );
 }

@@ -85,7 +85,7 @@ export function sanitizeProfile(p: Record<string, unknown>): EverhourProfile {
     timezone: (get<number>("timezone") as number | null) ?? null,
     capacity: (get<number>("capacity") as number | null) ?? null,
     cost: (get<number>("cost") as number | null) ?? null,
-    costHistory: p["costHistory"] ?? null,
+    costHistory: (p["costHistory"] ?? null) as EverhourProfile["costHistory"],
     createdAt: (get<string>("createdAt") as string | null) ?? null,
     groups:
       (get<{ id: number; name: string }[]>("groups") as { id: number; name: string }[] | null) ??

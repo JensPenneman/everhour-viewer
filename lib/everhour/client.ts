@@ -1,3 +1,4 @@
+import type { JsonValue } from "@/lib/json";
 import { EverhourError } from "./errors";
 
 const API_BASE = "https://api.everhour.com";
@@ -11,7 +12,7 @@ export interface FetchOptions {
   readonly key: string;
   readonly method?: HttpMethod;
   /** JSON request body for write methods. */
-  readonly body?: unknown;
+  readonly body?: JsonValue;
   readonly params?: Readonly<Record<string, string | number>>;
   readonly signal?: AbortSignal;
   readonly retries?: number;
