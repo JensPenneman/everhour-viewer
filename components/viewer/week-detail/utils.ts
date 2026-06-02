@@ -1,3 +1,4 @@
+import { addDays, format } from "date-fns";
 import type { WeekDay, WeekRecord, WeekTaskRef } from "@/lib/everhour";
 import { parseLocalDate, toLocalIsoDate } from "@/lib/format";
 
@@ -14,14 +15,13 @@ export function fullWeekDays(week: WeekRecord): ReadonlyArray<WeekDay> {
   const result: WeekDay[] = [];
 
   for (let i = 0; i < 7; i++) {
-    const dt = new Date(start);
-    dt.setDate(dt.getDate() + i);
+    const dt = addDays(start, i);
     const iso = toLocalIsoDate(dt);
     const existing = byDate.get(iso);
     result.push(
       existing ?? {
         date: iso,
-        weekday: dt.toLocaleDateString("en-US", { weekday: "long" }),
+        weekday: format(dt, "EEEE"), // English weekday, matching transforms.buildWeek
         totalSeconds: 0,
         entries: [],
       },

@@ -1,3 +1,4 @@
+import { addDays as addDaysFns, format, parseISO } from "date-fns";
 import type { DayEvent } from "./types";
 
 /**
@@ -50,8 +51,8 @@ export function holidaysInRange(
   to: string,
   opts: HolidayProviderOptions,
 ): ReadonlyArray<DayEvent> {
-  const fromDate = new Date(`${from}T00:00:00`);
-  const toDate = new Date(`${to}T00:00:00`);
+  const fromDate = parseISO(from);
+  const toDate = parseISO(to);
   if (Number.isNaN(fromDate.getTime()) || Number.isNaN(toDate.getTime())) return [];
   if (opts.country.toUpperCase() !== "BE") return [];
 
@@ -111,11 +112,9 @@ function easterSunday(year: number): string {
   return ymd(year, month, day);
 }
 
-/** Add `n` days to a `YYYY-MM-DD` string in UTC (timezone-safe). */
+/** Add `n` calendar days to a `YYYY-MM-DD` string (timezone-safe whole-day add). */
 function addDays(iso: string, n: number): string {
-  const [y, m, d] = iso.split("-").map(Number);
-  const dt = new Date(Date.UTC(y!, m! - 1, d! + n));
-  return ymd(dt.getUTCFullYear(), dt.getUTCMonth() + 1, dt.getUTCDate());
+  return format(addDaysFns(parseISO(iso), n), "yyyy-MM-dd");
 }
 
 function ymd(year: number, month: number, day: number): string {

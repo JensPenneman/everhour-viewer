@@ -1,3 +1,4 @@
+import { format, parseISO } from "date-fns";
 import { isoWeekLabel } from "./iso-week";
 import {
   WEEK_SCHEMA_VERSION,
@@ -149,7 +150,7 @@ export function buildWeek(
 
   const sortedDays = [...days.values()].sort((a, b) => a.date.localeCompare(b.date));
   for (const d of sortedDays) {
-    d.weekday = new Date(`${d.date}T00:00:00`).toLocaleDateString("en-US", { weekday: "long" });
+    d.weekday = format(parseISO(d.date), "EEEE"); // English weekday ("Monday") — stored data, not a label
     d.entries.sort((a, b) => b.seconds - a.seconds);
   }
 
