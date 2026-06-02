@@ -11,3 +11,5 @@ export {
 } from "./useStreamingSync";
 export { useDayEvents, type DayEventsApi } from "./useDayEvents";
 export { useViewTransition, type Navigate, type NavigateOptions } from "./useViewTransition";
+export { useLive, type LiveApi, type LiveAction } from "./useLive";
+export { useTaskSearch, type TaskSearchApi } from "./useTaskSearch";
