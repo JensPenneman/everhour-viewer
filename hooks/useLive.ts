@@ -85,8 +85,15 @@ function mondayOf(today: string): string {
  * from the server so the running timer, clock, and totals never drift —
  * starting a timer, for instance, also auto-clocks-in upstream.
  */
-export function useLive(apiKey: string | null, userId: number | null, today: string): LiveApi {
-  const ready = !!apiKey && !!userId;
+export function useLive(
+  apiKey: string | null,
+  userId: number | null,
+  today: string,
+  enabled = true,
+): LiveApi {
+  // `apiKey` is the header value (may be null when the server has an env key);
+  // `enabled` is whether tracking is possible at all (user key OR env key).
+  const ready = enabled && !!userId;
   const weekStart = useMemo(() => mondayOf(today), [today]);
 
   const [snapshot, setSnapshot] = useState<TimerSnapshot | null>(null);
