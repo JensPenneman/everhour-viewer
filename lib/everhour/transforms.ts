@@ -1,5 +1,18 @@
 import { isoWeekLabel } from "./iso-week";
-import type { EverhourProfile, RawEntry, RawTimesheet, WeekEntry, WeekRecord } from "./types";
+import {
+  WEEK_SCHEMA_VERSION,
+  type ClockEvent,
+  type EverhourProfile,
+  type MemberMap,
+  type RawEntry,
+  type RawEntryHistory,
+  type RawTimecardHistory,
+  type RawTimesheet,
+  type TimeEdit,
+  type TimeEditAction,
+  type WeekEntry,
+  type WeekRecord,
+} from "./types";
 
 /** Mutable shadow of WeekDay used while assembling a week. */
 interface MutableWeekDay {
@@ -11,6 +24,42 @@ interface MutableWeekDay {
   clockOut?: string | null;
   workTime?: number | null;
   breakTime?: number | null;
+  clockHistory?: ClockEvent[];
+}
+
+const KNOWN_EDIT_ACTIONS: ReadonlySet<string> = new Set(["TIMER", "EDIT", "COMMENT"]);
+
+/** Project one raw `history` record into the sanitised {@link TimeEdit}. */
+function toTimeEdit(h: RawEntryHistory, members: MemberMap): TimeEdit {
+  const by = h.createdBy ?? null;
+  const rawAction = (h.action ?? "").toUpperCase();
+  const action: TimeEditAction = KNOWN_EDIT_ACTIONS.has(rawAction)
+    ? (rawAction as TimeEditAction)
+    : "EDIT";
+  return {
+    action,
+    deltaSeconds: h.time ?? 0,
+    previousSeconds: h.previousTime ?? 0,
+    at: h.createdAt ?? "",
+    by,
+    byName: by != null ? (members.get(by) ?? null) : null,
+    fromTaskId: h.previousTask ?? null,
+    fromDate: h.previousDate ?? null,
+    warning: h.warning ?? null,
+  };
+}
+
+/** Project one raw timecard `history` record into a {@link ClockEvent}. */
+function toClockEvent(h: RawTimecardHistory, members: MemberMap): ClockEvent {
+  const by = h.createdBy ?? null;
+  return {
+    action: h.action ?? "",
+    trigger: h.trigger ?? "",
+    at: h.createdAt ?? "",
+    localTime: h.time ?? null,
+    by,
+    byName: by != null ? (members.get(by) ?? null) : null,
+  };
 }
 
 /**
@@ -55,7 +104,11 @@ export function sanitizeProfile(p: Record<string, unknown>): EverhourProfile {
  *  - computes totals,
  *  - normalises approval status to the closed enum.
  */
-export function buildWeek(ts: RawTimesheet, entries: ReadonlyArray<RawEntry>): WeekRecord {
+export function buildWeek(
+  ts: RawTimesheet,
+  entries: ReadonlyArray<RawEntry>,
+  members: MemberMap = new Map(),
+): WeekRecord {
   const days = new Map<string, MutableWeekDay>();
 
   const get = (date: string): MutableWeekDay => {
@@ -79,6 +132,9 @@ export function buildWeek(ts: RawTimesheet, entries: ReadonlyArray<RawEntry>): W
       },
       seconds: e.time,
       lockReasons: e.lockReasons ?? [],
+      entryId: e.id ?? null,
+      comment: e.comment ?? null,
+      history: (e.history ?? []).map((h) => toTimeEdit(h, members)),
     });
   }
 
@@ -88,6 +144,7 @@ export function buildWeek(ts: RawTimesheet, entries: ReadonlyArray<RawEntry>): W
     day.clockOut = tc.clockOut ?? null;
     day.workTime = tc.workTime ?? null;
     day.breakTime = tc.breakTime ?? null;
+    day.clockHistory = (tc.history ?? []).map((h) => toClockEvent(h, members));
   }
 
   const sortedDays = [...days.values()].sort((a, b) => a.date.localeCompare(b.date));
@@ -101,7 +158,7 @@ export function buildWeek(ts: RawTimesheet, entries: ReadonlyArray<RawEntry>): W
   const submittedAt = approval?.history?.find((h) => h.action === "submitted")?.createdAt ?? null;
 
   return {
-    schemaVersion: 2,
+    schemaVersion: WEEK_SCHEMA_VERSION,
     exportedAt: new Date().toISOString().slice(0, 19),
     user: { id: ts.user.id, name: ts.user.name, email: ts.user.email },
     week: {

@@ -9,6 +9,16 @@
 
 export type ApprovalStatus = "pending" | "approved" | "rejected" | "unsubmitted";
 
+/**
+ * Current {@link WeekRecord} schema version.
+ *
+ * Bumped from 2 → 3 when per-entry edit history (`comment` + `history`) and
+ * timecard clock history were added. The delta-sync plan refetches any
+ * cached week whose `schemaVersion` is below this, so older caches heal on
+ * the next sync without a manual force.
+ */
+export const WEEK_SCHEMA_VERSION = 3 as const;
+
 export interface EverhourProfile {
   readonly schemaVersion: 1;
   readonly exportedAt: string;
@@ -36,10 +46,60 @@ export interface WeekTaskRef {
   readonly labels: ReadonlyArray<string>;
 }
 
+/** A single record in a time entry's audit trail. */
+export type TimeEditAction = "TIMER" | "EDIT" | "COMMENT";
+
+/**
+ * One change to a time entry, sanitised from Everhour's `history` array.
+ *
+ * `deltaSeconds` is signed: a running timer adds positive seconds, a manual
+ * correction can be negative (the boss removing 27 min of lunch is -1620).
+ * `previousSeconds` is the cumulative total *before* this action, so the
+ * resulting total is always `previousSeconds + deltaSeconds`.
+ *
+ * `at` is the raw UTC timestamp Everhour returned (`YYYY-MM-DD HH:MM:SS`);
+ * the UI converts it to local time using the profile timezone offset. `by`
+ * is the actor's user id and `byName` its resolved display name (null when
+ * the actor is no longer on the team).
+ */
+export interface TimeEdit {
+  readonly action: TimeEditAction;
+  readonly deltaSeconds: number;
+  readonly previousSeconds: number;
+  readonly at: string;
+  readonly by: number | null;
+  readonly byName: string | null;
+  /** Set when the action moved time off another task (Everhour `previousTask`). */
+  readonly fromTaskId: string | null;
+  /** Set when the action moved time off another date (Everhour `previousDate`). */
+  readonly fromDate: string | null;
+  readonly warning: string | null;
+}
+
 export interface WeekEntry {
   readonly task: WeekTaskRef;
   readonly seconds: number;
   readonly lockReasons: ReadonlyArray<string>;
+  /** Everhour time-record id; stable key for an entry within a day. */
+  readonly entryId?: number | null;
+  /** Latest comment on the record (e.g. "Correctie lunch"), or null. */
+  readonly comment?: string | null;
+  /** Audit trail of timer runs, manual edits, and comments. Newest last. */
+  readonly history?: ReadonlyArray<TimeEdit>;
+}
+
+/** One clock-in / clock-out event from a day's timecard history. */
+export interface ClockEvent {
+  /** "clock-in" | "clock-out". */
+  readonly action: string;
+  /** What caused it: "timer", "day-end" (auto), "manual", … */
+  readonly trigger: string;
+  /** Raw UTC timestamp (`YYYY-MM-DD HH:MM:SS`). */
+  readonly at: string;
+  /** Local clock value Everhour recorded, e.g. "9:09". */
+  readonly localTime: string | null;
+  readonly by: number | null;
+  readonly byName: string | null;
 }
 
 export interface WeekDay {
@@ -51,6 +111,8 @@ export interface WeekDay {
   readonly clockOut?: string | null;
   readonly workTime?: number | null;
   readonly breakTime?: number | null;
+  /** Clock-in/out audit trail for the day. */
+  readonly clockHistory?: ReadonlyArray<ClockEvent>;
 }
 
 export interface ApprovalEvent {
@@ -59,7 +121,7 @@ export interface ApprovalEvent {
 }
 
 export interface WeekRecord {
-  readonly schemaVersion: 2;
+  readonly schemaVersion: typeof WEEK_SCHEMA_VERSION;
   readonly exportedAt: string;
   readonly user: { readonly id: number; readonly name: string; readonly email: string };
   readonly week: {
@@ -107,11 +169,35 @@ export interface RawTask {
   readonly labels?: ReadonlyArray<string>;
 }
 
+export interface RawEntryHistory {
+  readonly id?: number;
+  readonly action?: string;
+  readonly time?: number;
+  readonly previousTime?: number;
+  readonly previousTask?: string | null;
+  readonly previousDate?: string | null;
+  readonly createdBy?: number | null;
+  readonly createdAt?: string;
+  readonly warning?: string | null;
+}
+
 export interface RawEntry {
+  readonly id?: number;
   readonly date: string;
   readonly time: number;
   readonly task: RawTask;
+  readonly comment?: string | null;
+  readonly createdAt?: string;
+  readonly history?: ReadonlyArray<RawEntryHistory>;
   readonly lockReasons?: ReadonlyArray<string>;
+}
+
+export interface RawTimecardHistory {
+  readonly action?: string;
+  readonly trigger?: string;
+  readonly createdBy?: number | null;
+  readonly createdAt?: string;
+  readonly time?: string | null;
 }
 
 export interface RawTimecard {
@@ -120,6 +206,7 @@ export interface RawTimecard {
   readonly clockOut?: string | null;
   readonly workTime?: number | null;
   readonly breakTime?: number | null;
+  readonly history?: ReadonlyArray<RawTimecardHistory>;
 }
 
 export interface RawTimesheet {
@@ -132,3 +219,13 @@ export interface RawTimesheet {
     readonly history?: ReadonlyArray<ApprovalEvent>;
   };
 }
+
+/** A single member from `/team/users`, narrowed to what we display. */
+export interface RawTeamMember {
+  readonly id: number;
+  readonly name?: string | null;
+  readonly email?: string | null;
+}
+
+/** Resolved id → display name for actors in edit/clock history. */
+export type MemberMap = ReadonlyMap<number, string>;

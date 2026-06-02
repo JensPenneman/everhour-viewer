@@ -1,7 +1,7 @@
 import "server-only";
 import { everhourFetch } from "./client";
 import { sanitizeProfile } from "./transforms";
-import type { EverhourProfile, RawEntry, RawTimesheet } from "./types";
+import type { EverhourProfile, MemberMap, RawEntry, RawTeamMember, RawTimesheet } from "./types";
 
 /**
  * High-level Everhour operations layered on top of {@link everhourFetch}.
@@ -16,6 +16,23 @@ import type { EverhourProfile, RawEntry, RawTimesheet } from "./types";
 export async function fetchProfile(key: string, signal?: AbortSignal): Promise<EverhourProfile> {
   const raw = await everhourFetch<Record<string, unknown>>("/users/me", { key, signal });
   return sanitizeProfile(raw);
+}
+
+/**
+ * Fetch the team roster and project it into an id → display-name map.
+ *
+ * Used to resolve who performed each edit / clock event (the actor is only
+ * an opaque user id in the `history` arrays). A failure here must not sink a
+ * whole sync — the caller passes an empty map and the UI falls back to
+ * "Gebruiker #id".
+ */
+export async function fetchTeamMembers(key: string, signal?: AbortSignal): Promise<MemberMap> {
+  const raw = await everhourFetch<RawTeamMember[]>("/team/users", { key, signal });
+  const map = new Map<number, string>();
+  for (const m of raw) {
+    if (typeof m?.id === "number" && m.name) map.set(m.id, m.name);
+  }
+  return map;
 }
 
 export interface FetchTimesheetListOptions {

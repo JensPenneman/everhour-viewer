@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { buildPlan } from "@/server/sync/plan";
-import type { RawTimesheet } from "@/lib/everhour";
+import { WEEK_SCHEMA_VERSION, type RawTimesheet } from "@/lib/everhour";
 
 function ts(from: string, approval?: RawTimesheet["approval"]): RawTimesheet {
   return {
@@ -11,20 +11,40 @@ function ts(from: string, approval?: RawTimesheet["approval"]): RawTimesheet {
 }
 
 describe("buildPlan", () => {
-  it("skips submitted weeks already cached at the same status", () => {
+  it("skips submitted weeks already cached at the same status and current schema", () => {
     const plan = buildPlan(
       [ts("2026-05-11", { status: "approved" })],
-      [{ isoWeek: "2026-W20", status: "approved" }],
+      [{ isoWeek: "2026-W20", status: "approved", schemaVersion: WEEK_SCHEMA_VERSION }],
       false,
     );
     expect(plan.toSkip).toHaveLength(1);
     expect(plan.toFetch).toHaveLength(0);
   });
 
+  it("refetches a submitted week cached at an older schema version", () => {
+    const plan = buildPlan(
+      [ts("2026-05-11", { status: "approved" })],
+      [{ isoWeek: "2026-W20", status: "approved", schemaVersion: WEEK_SCHEMA_VERSION - 1 }],
+      false,
+    );
+    expect(plan.toFetch).toHaveLength(1);
+    expect(plan.toSkip).toHaveLength(0);
+  });
+
+  it("refetches a submitted week with no cached schema version (pre-v3 cache)", () => {
+    const plan = buildPlan(
+      [ts("2026-05-11", { status: "approved" })],
+      [{ isoWeek: "2026-W20", status: "approved" }],
+      false,
+    );
+    expect(plan.toFetch).toHaveLength(1);
+    expect(plan.toSkip).toHaveLength(0);
+  });
+
   it("refetches a submitted week when its status has changed", () => {
     const plan = buildPlan(
       [ts("2026-05-11", { status: "approved" })],
-      [{ isoWeek: "2026-W20", status: "pending" }],
+      [{ isoWeek: "2026-W20", status: "pending", schemaVersion: WEEK_SCHEMA_VERSION }],
       false,
     );
     expect(plan.toFetch).toHaveLength(1);

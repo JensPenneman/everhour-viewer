@@ -1,7 +1,11 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { runSync } from "@/server/sync/orchestrator";
 import type { SyncEvent, SyncRequest } from "@/server/sync";
+import { WEEK_SCHEMA_VERSION } from "@/lib/everhour";
 import { readNdjsonStream } from "@/lib/streaming/ndjson";
+
+const TEAM = [{ id: 42, name: "Tester", email: "t@example.com" }];
+const teamEndpoint = { matcher: (u: string) => u.includes("/team/users"), respond: () => ok(TEAM) };
 
 /**
  * The orchestrator composes `fetchProfile`, `fetchTimesheetList` and
@@ -86,6 +90,7 @@ describe("runSync — happy path", () => {
   it("emits profile → plan → skip/week → done in order", async () => {
     installFetch([
       { matcher: (u) => u.endsWith("/users/me"), respond: () => ok(PROFILE) },
+      teamEndpoint,
       {
         matcher: (u) => u.includes("/users/42/timesheets"),
         respond: () => ok([W20_TS, W21_TS]),
@@ -102,7 +107,9 @@ describe("runSync — happy path", () => {
         request: {
           weeksBack: 78,
           force: false,
-          knownWeeks: [{ isoWeek: "2026-W20", status: "approved" }],
+          knownWeeks: [
+            { isoWeek: "2026-W20", status: "approved", schemaVersion: WEEK_SCHEMA_VERSION },
+          ],
         },
       }),
     );
@@ -137,6 +144,7 @@ describe("runSync — happy path", () => {
   it("force=true re-fetches a submitted, already-known week as 'updated'", async () => {
     installFetch([
       { matcher: (u) => u.endsWith("/users/me"), respond: () => ok(PROFILE) },
+      teamEndpoint,
       {
         matcher: (u) => u.includes("/users/42/timesheets"),
         respond: () => ok([W20_TS]),
@@ -209,6 +217,7 @@ describe("runSync — error paths", () => {
   it("emits partial profile + error when a mid-stream week fetch fails", async () => {
     installFetch([
       { matcher: (u) => u.endsWith("/users/me"), respond: () => ok(PROFILE) },
+      teamEndpoint,
       {
         matcher: (u) => u.includes("/users/42/timesheets"),
         respond: () => ok([W21_TS]),

@@ -4,9 +4,11 @@ import {
   EverhourError,
   buildWeek,
   fetchProfile,
+  fetchTeamMembers,
   fetchTimesheetList,
   fetchWeekEntries,
 } from "@/lib/everhour";
+import type { MemberMap } from "@/lib/everhour";
 import { writeNdjsonLine } from "@/lib/streaming/ndjson";
 import type { SyncEvent } from "./events";
 import { buildPlan } from "./plan";
@@ -36,6 +38,16 @@ export function runSync(opts: OrchestratorOptions): ReadableStream<Uint8Array> {
       try {
         const profile = await fetchProfile(opts.key, opts.signal);
         send({ type: "profile", profile });
+
+        // Resolve actor names for edit/clock history. Non-fatal: a failure
+        // (e.g. a key without team scope) degrades to "Gebruiker #id" rather
+        // than aborting the whole sync.
+        let members: MemberMap = new Map();
+        try {
+          members = await fetchTeamMembers(opts.key, opts.signal);
+        } catch (e) {
+          if (e instanceof Error && (e.name === "AbortError" || e.name === "TimeoutError")) throw e;
+        }
 
         const timesheets = await fetchTimesheetList({
           key: opts.key,
@@ -75,7 +87,7 @@ export function runSync(opts: OrchestratorOptions): ReadableStream<Uint8Array> {
             to: entry.ts.week.to,
             signal: opts.signal,
           });
-          const week = buildWeek(entry.ts, rawEntries);
+          const week = buildWeek(entry.ts, rawEntries, members);
           const kind: "new" | "updated" = knownIsoWeeks.has(entry.isoWeek) ? "updated" : "new";
           if (kind === "new") counts.new++;
           else counts.updated++;

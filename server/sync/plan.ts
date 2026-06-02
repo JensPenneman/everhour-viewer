@@ -1,4 +1,4 @@
-import { isoWeekLabel, type RawTimesheet } from "@/lib/everhour";
+import { WEEK_SCHEMA_VERSION, isoWeekLabel, type RawTimesheet } from "@/lib/everhour";
 import type { KnownWeek } from "./schema";
 
 export interface PlanEntry {
@@ -20,7 +20,9 @@ export interface Plan {
  *   - `force` is false,
  *   - the timesheet is submitted (`approval` is present in the response),
  *   - the client already has that week cached with the **same** approval
- *     status (so a transition pending → approved still triggers a refetch).
+ *     status (so a transition pending → approved still triggers a refetch),
+ *   - the cached week is at the **current** schema version (an older cache
+ *     is refetched so new audit fields backfill without a manual force).
  *
  * Otherwise the week is fetched. Open weeks (no `approval`) are *always*
  * fetched — they're the in-progress current week and can change every hour.
@@ -30,14 +32,19 @@ export function buildPlan(
   knownWeeks: ReadonlyArray<KnownWeek>,
   force: boolean,
 ): Plan {
-  const known = new Map(knownWeeks.map((k) => [k.isoWeek, k.status]));
+  const known = new Map(knownWeeks.map((k) => [k.isoWeek, k]));
 
   const entries: PlanEntry[] = timesheets.map((ts) => {
     const isoWeek = isoWeekLabel(ts.week.from);
-    const knownStatus = known.get(isoWeek);
+    const cached = known.get(isoWeek);
     const isSubmitted = !!ts.approval;
+    const schemaCurrent = (cached?.schemaVersion ?? 0) >= WEEK_SCHEMA_VERSION;
     const skip =
-      !force && knownStatus !== undefined && isSubmitted && knownStatus === ts.approval?.status;
+      !force &&
+      cached !== undefined &&
+      isSubmitted &&
+      cached.status === ts.approval?.status &&
+      schemaCurrent;
     return { ts, isoWeek, skip };
   });
 

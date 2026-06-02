@@ -17,7 +17,11 @@ export interface SyncProgress {
 
 export interface StreamingSyncOptions {
   readonly apiKey: string | null;
-  readonly knownWeeks: ReadonlyArray<{ isoWeek: string; status: WeekRecord["approval"]["status"] }>;
+  readonly knownWeeks: ReadonlyArray<{
+    isoWeek: string;
+    status: WeekRecord["approval"]["status"];
+    schemaVersion?: number;
+  }>;
   readonly weeksBack?: number;
   readonly force?: boolean;
   readonly onProfile?: (profile: EverhourProfile) => void;
