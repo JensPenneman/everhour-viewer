@@ -1,7 +1,7 @@
 import type { ReactNode } from "react";
 
 export interface KpiCardProps {
-  readonly label: string;
+  readonly label: ReactNode;
   readonly value: ReactNode;
   readonly hint?: string;
   readonly small?: boolean;
