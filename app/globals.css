@@ -8,7 +8,9 @@
   --muted-soft: #9ca3af;
   --border: #e5e7eb;
   --hover: #f3f4f6;
-  --accent: #3b6dff;
+  /* #2563eb (not the lighter #3b6dff) so white-on-accent buttons and
+     accent-on-background links both clear WCAG AA 4.5:1 contrast. */
+  --accent: #2563eb;
   --accent-bg: #eaf0ff;
   --good: #16a34a;
   --good-bg: #dcfce7;
