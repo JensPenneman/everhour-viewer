@@ -173,4 +173,25 @@ test.describe("Sync flow (mocked)", () => {
     expect(postBody?.knownWeeks?.length).toBeGreaterThan(0);
     expect(postBody?.knownWeeks?.[0]?.isoWeek).toBe("2026-W20");
   });
+
+  test("selecting a week navigates to its real route", async ({ page }) => {
+    await page.route("**/api/sync", async (route) => {
+      if (route.request().method() === "GET") {
+        await route.fulfill({ status: 200, body: JSON.stringify({ hasEnvKey: true }) });
+        return;
+      }
+      await mockSync(route, 3, { new: 3, updated: 0, skipped: 0, totalWeeks: 3 });
+    });
+
+    await page.goto("/");
+    await page.getByRole("button", { name: "Synchroniseer", exact: true }).first().click();
+
+    const sidebar = page.getByRole("complementary", { name: "Navigatie" });
+    await sidebar.getByText("2026-W20", { exact: true }).click();
+
+    // The Next router owns the URL now — the week is a real route segment,
+    // and its page renders from the route param.
+    await expect(page).toHaveURL(/\/week\/2026-W20$/);
+    await expect(page.getByRole("main").getByText("Mock task").first()).toBeVisible();
+  });
 });

@@ -16,11 +16,13 @@ export default defineConfig({
     screenshot: "only-on-failure",
     video: "retain-on-failure",
   },
+  // All major engines: Chromium (Chrome/Edge), Firefox (Gecko), and WebKit
+  // (Safari). Bundled Playwright builds, so runs are reproducible without a
+  // system browser. View Transitions gracefully degrade where unsupported.
   projects: [
-    {
-      name: "chromium",
-      use: { ...devices["Desktop Chrome"], channel: "chrome" },
-    },
+    { name: "chromium", use: { ...devices["Desktop Chrome"] } },
+    { name: "firefox", use: { ...devices["Desktop Firefox"] } },
+    { name: "webkit", use: { ...devices["Desktop Safari"] } },
   ],
   webServer: process.env.E2E_USE_RUNNING_SERVER
     ? undefined
