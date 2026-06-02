@@ -31,6 +31,10 @@ edit audit, backups). Bring-your-own-key, everything cached in the browser.
 - **Streamed.** Sync responds with NDJSON; the sidebar fills and the
   first week becomes browseable while the rest is still in flight.
 - **Local-first.** All data lives in the browser. There is no database.
+- **Offline-capable (PWA).** A service worker precaches the app shell, so it
+  opens with no network; the persisted Query cache serves your weeks offline.
+  New builds update automatically (with a reload prompt). Network state comes
+  from TanStack Query's `onlineManager`; live actions fail fast when offline.
 - **Exportable.** One-click backup downloads the full cache as a single
   JSON file. Re-importable.
 - **Dutch UI.** Status pills, weekdays, and dates render in Dutch.
@@ -178,8 +182,8 @@ Two layers:
    logic: iso-week math, week building, profile sanitisation, delta plan,
    schema validation, NDJSON reader/writer.
 2. **E2E tests** (`@playwright/test`, `tests/e2e/`) — drive the real UI
-   against a **mocked** `/api/sync` endpoint so they don't depend on the
-   live Everhour API.
+   against a **mocked** API so they don't depend on the live Everhour API.
+   Every spec runs on **Chromium, Firefox, and WebKit (Safari)**.
 
 The dev screenshot driver (`npm run shoot`) is separate — it hits the
 real API and is useful for visual regression while iterating on UI.
