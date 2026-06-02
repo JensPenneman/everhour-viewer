@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import type { EverhourProfile, WeekRecord } from "@/lib/everhour";
-import { readCache, writeCache, clearCache, type CacheSnapshot } from "@/lib/storage";
+import { readCache, writeCache, clearCache } from "@/lib/storage";
 
 export interface ViewerCacheApi {
   /** True once the initial `localStorage` hydration has completed. */
@@ -53,52 +53,41 @@ export function useViewerCache(): ViewerCacheApi {
     setHydrated(true);
   }, []);
 
-  const persist = useCallback((snapshot: CacheSnapshot) => {
-    writeCache(snapshot);
+  // Persist the whole snapshot whenever either field changes (after the
+  // initial hydration). Persisting from one effect — rather than inside each
+  // setter — avoids a stale-closure bug where the rapid `upsertWeek` calls
+  // of a sync re-persisted a stale `profile` (null), dropping the profile
+  // from the cache so it vanished on the next reload.
+  useEffect(() => {
+    if (!hydrated) return;
+    writeCache({ profile, weeks });
+  }, [hydrated, profile, weeks]);
+
+  const setProfile = useCallback((next: EverhourProfile | null) => {
+    setProfileState(next);
   }, []);
 
-  const setProfile = useCallback(
-    (next: EverhourProfile | null) => {
-      setProfileState(next);
-      persist({ profile: next, weeks });
-    },
-    [persist, weeks],
-  );
+  const setWeeks = useCallback((next: ReadonlyArray<WeekRecord>) => {
+    setWeeksState(next);
+  }, []);
 
-  const setWeeks = useCallback(
-    (next: ReadonlyArray<WeekRecord>) => {
-      setWeeksState(next);
-      persist({ profile, weeks: next });
-    },
-    [persist, profile],
-  );
+  const upsertWeek = useCallback((week: WeekRecord) => {
+    setWeeksState((cur) => {
+      const next = [...cur];
+      const idx = next.findIndex((w) => w.week.isoWeek === week.week.isoWeek);
+      if (idx >= 0) next[idx] = week;
+      else next.push(week);
+      return next;
+    });
+  }, []);
 
-  const upsertWeek = useCallback(
-    (week: WeekRecord) => {
-      setWeeksState((cur) => {
-        const next = [...cur];
-        const idx = next.findIndex((w) => w.week.isoWeek === week.week.isoWeek);
-        if (idx >= 0) next[idx] = week;
-        else next.push(week);
-        persist({ profile, weeks: next });
-        return next;
-      });
-    },
-    [persist, profile],
-  );
-
-  const upsertWeeks = useCallback(
-    (incoming: ReadonlyArray<WeekRecord>) => {
-      setWeeksState((cur) => {
-        const map = new Map(cur.map((w) => [w.week.isoWeek, w]));
-        for (const w of incoming) map.set(w.week.isoWeek, w);
-        const next = [...map.values()];
-        persist({ profile, weeks: next });
-        return next;
-      });
-    },
-    [persist, profile],
-  );
+  const upsertWeeks = useCallback((incoming: ReadonlyArray<WeekRecord>) => {
+    setWeeksState((cur) => {
+      const map = new Map(cur.map((w) => [w.week.isoWeek, w]));
+      for (const w of incoming) map.set(w.week.isoWeek, w);
+      return [...map.values()];
+    });
+  }, []);
 
   const clear = useCallback(() => {
     setProfileState(null);
