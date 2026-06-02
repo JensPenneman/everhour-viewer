@@ -61,6 +61,7 @@ Get a key from Everhour's settings: **Settings → Application Access**
 | `npm run test:e2e`      | Playwright E2E suite (auto-starts the dev server).                                     |
 | `npm run test:e2e:ui`   | Playwright in interactive UI mode.                                                     |
 | `npm run shoot`         | Drive a real (or stubbed) browser through every screen and snapshot to `screenshots/`. |
+| `npm run lighthouse`    | Build, audit with Lighthouse (desktop), and fail unless every category is green (≥90). |
 | `npm run check`         | One-shot CI gate: typecheck + lint + format + unit tests.                              |
 
 Pre-commit (`husky` + `lint-staged`) runs Prettier + ESLint on staged files
@@ -174,6 +175,10 @@ and PR:
 2. **`e2e`** — Playwright against the production build, browsers
    installed inside the runner. Reports uploaded as an artifact on
    failure.
+3. **`lighthouse`** — builds, serves the production app, and runs
+   Lighthouse (desktop). The job fails unless **every** category
+   (performance, accessibility, best-practices, SEO) is in the green
+   band (≥ 90). Run it locally with `npm run lighthouse`.
 
 ## Security notes
 
