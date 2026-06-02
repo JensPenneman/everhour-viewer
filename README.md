@@ -1,7 +1,8 @@
 # everhour-viewer
 
-A local **NextJS** app to view [Everhour](https://everhour.com) timesheets.
-Bring-your-own-key, delta-streaming sync, everything cached in the browser.
+A local **NextJS** app for [Everhour](https://everhour.com): a live tracker
+(start/stop timers, day/week targets) **and** a timesheet viewer (history,
+edit audit, backups). Bring-your-own-key, everything cached in the browser.
 
 <div>
 
@@ -12,9 +13,17 @@ Bring-your-own-key, delta-streaming sync, everything cached in the browser.
 
 ## Features
 
+- **Live tracking (Vandaag).** The default landing: start/stop a timer on
+  any task (search or one-tap a recent one), with a live-ticking elapsed
+  clock, attendance clock status, today's entries, and two progress
+  meters — time left to a full **8u** day and to the full **40u** week
+  (both counting the running timer in real time). Mutations proxy through
+  the server with the same key model and never auto-retry.
+- **Viewer.** Week/day history, the edit-correction audit trail, and
+  exportable backups — reachable from the sidebar.
 - **Bring your own key.** Each visitor pastes their own Everhour API key.
   Stored in `localStorage`, forwarded to the server via header on each
-  sync — the server never persists it.
+  request — the server never persists it.
 - **Delta sync.** The client tells the server which weeks it has and at
   which approval status. The server fetches details only for new or
   status-changed weeks. A first sync is one minute; subsequent syncs

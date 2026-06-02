@@ -4,13 +4,14 @@ import type { EverhourProfile, WeekRecord } from "@/lib/everhour";
 import { StatusPill } from "@/components/ui";
 import { fmtDateShort, fmtDuration } from "@/lib/format";
 
-export type SidebarView = "empty" | "profile" | "week";
+export type SidebarView = "empty" | "today" | "profile" | "week";
 
 export interface SidebarProps {
   readonly profile: EverhourProfile | null;
   readonly weeks: ReadonlyArray<WeekRecord>;
   readonly activeIso: string | null;
   readonly view: SidebarView;
+  readonly onSelectToday: () => void;
   readonly onSelectWeek: (iso: string) => void;
   readonly onSelectProfile: () => void;
 }
@@ -20,6 +21,7 @@ export function Sidebar({
   weeks,
   activeIso,
   view,
+  onSelectToday,
   onSelectWeek,
   onSelectProfile,
 }: SidebarProps) {
@@ -30,6 +32,24 @@ export function Sidebar({
       aria-label="Navigatie"
       className="w-[300px] bg-panel border-r border-border overflow-hidden shrink-0 flex flex-col"
     >
+      <button
+        type="button"
+        onClick={onSelectToday}
+        className={`px-4 py-3 border-b border-border flex items-center gap-2.5 cursor-pointer select-none text-left hover:bg-hover ${
+          view === "today" ? "bg-accent-bg" : ""
+        }`}
+      >
+        <span
+          className={`text-[15px] ${view === "today" ? "text-accent" : "text-muted"}`}
+          aria-hidden="true"
+        >
+          ⏱
+        </span>
+        <span className={`font-semibold text-[13.5px] ${view === "today" ? "text-accent" : ""}`}>
+          Vandaag
+        </span>
+      </button>
+
       {profile ? (
         <ProfileCard profile={profile} active={view === "profile"} onClick={onSelectProfile} />
       ) : null}

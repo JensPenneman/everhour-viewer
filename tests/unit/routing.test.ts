@@ -2,9 +2,9 @@ import { describe, it, expect } from "vitest";
 import { dayHref, parseRoute, routeDepth, weekHref } from "@/lib/routing";
 
 describe("parseRoute", () => {
-  it("maps the root to home", () => {
-    expect(parseRoute("/")).toEqual({ view: "home" });
-    expect(parseRoute("")).toEqual({ view: "home" });
+  it("maps the root to the today/live view", () => {
+    expect(parseRoute("/")).toEqual({ view: "today" });
+    expect(parseRoute("")).toEqual({ view: "today" });
   });
 
   it("maps /profile to the profile view", () => {
@@ -35,8 +35,8 @@ describe("parseRoute", () => {
     });
   });
 
-  it("falls back to home for a malformed iso week", () => {
-    expect(parseRoute("/week/not-a-week")).toEqual({ view: "home" });
+  it("falls back to today for a malformed iso week", () => {
+    expect(parseRoute("/week/not-a-week")).toEqual({ view: "today" });
   });
 
   it("drops a malformed date segment rather than failing", () => {
@@ -47,13 +47,13 @@ describe("parseRoute", () => {
     });
   });
 
-  it("falls back to home for unknown roots", () => {
-    expect(parseRoute("/anything/else")).toEqual({ view: "home" });
+  it("falls back to today for unknown roots", () => {
+    expect(parseRoute("/anything/else")).toEqual({ view: "today" });
   });
 });
 
 describe("routeDepth", () => {
-  it("orders home < week|profile < day for direction-aware transitions", () => {
+  it("orders today < week|profile < day for direction-aware transitions", () => {
     expect(routeDepth(parseRoute("/"))).toBe(0);
     expect(routeDepth(parseRoute("/profile"))).toBe(1);
     expect(routeDepth(parseRoute("/week/2026-W23"))).toBe(1);

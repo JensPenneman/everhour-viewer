@@ -13,13 +13,14 @@ import {
 } from "@/hooks";
 import { buildBackupFile, downloadBackup, readBackupFiles } from "@/lib/backup";
 import { toLocalIsoDate } from "@/lib/format";
-import { HOME_HREF, PROFILE_HREF, dayHref, parseRoute, weekHref } from "@/lib/routing";
+import { PROFILE_HREF, TODAY_HREF, dayHref, parseRoute, weekHref } from "@/lib/routing";
 import { Header } from "./Header";
 import { IntegrationsDialog } from "./integrations";
 import { KeyDialog } from "./KeyDialog";
 import { ProfileDetail } from "./ProfileDetail";
 import { Sidebar, type SidebarView } from "./Sidebar";
 import { ToastTray } from "./ToastTray";
+import { TodayView } from "./today";
 import { Welcome } from "./Welcome";
 import { WeekDetail, fullWeekDays } from "./week-detail";
 import { DayDetail } from "./day-detail";
@@ -69,7 +70,7 @@ export function Viewer() {
   // `navigate` wraps router pushes in a View Transition (see useViewTransition).
   const navigate = useViewTransition();
   const pathname = usePathname();
-  const route = useMemo(() => parseRoute(pathname ?? HOME_HREF), [pathname]);
+  const route = useMemo(() => parseRoute(pathname ?? TODAY_HREF), [pathname]);
 
   // Which week is active: explicit from the URL, else the latest synced week.
   const routeIso = route.view === "week" ? route.isoWeek : null;
@@ -84,13 +85,14 @@ export function Viewer() {
     [dayDate, activeWeek],
   );
 
-  // Map the URL onto a sidebar view, falling back to whatever the cache can
-  // show while it hydrates (no setState-in-render).
+  // Map the URL onto a sidebar view. Vandaag (today) is the default landing;
+  // the first run, before any key/data, falls back to the welcome screen.
   const effectiveView: SidebarView = useMemo(() => {
+    const hasData = cache.weeks.length > 0 || cache.profile !== null;
+    if (!hasData) return "empty";
     if (route.view === "profile" && cache.profile) return "profile";
-    if (cache.weeks.length > 0) return "week";
-    if (cache.profile) return "profile";
-    return "empty";
+    if (route.view === "week") return "week";
+    return "today";
   }, [route.view, cache.weeks.length, cache.profile]);
 
   // Keep the holiday / ICS provider window aligned with the data we
@@ -190,7 +192,7 @@ export function Viewer() {
     setMenuOpen(false);
     if (!confirm("Lokale gegevens wissen? Je API-sleutel blijft bewaard.")) return;
     cache.clear();
-    navigate(HOME_HREF);
+    navigate(TODAY_HREF);
     toastsPush("Cache gewist", "good");
   }, [cache, navigate, toastsPush]);
 
@@ -273,6 +275,7 @@ export function Viewer() {
           weeks={cache.sortedWeeks}
           activeIso={effectiveActiveIso}
           view={effectiveView}
+          onSelectToday={() => navigate(TODAY_HREF)}
           onSelectWeek={(iso) => navigate(weekHref(iso))}
           onSelectProfile={() => navigate(PROFILE_HREF)}
         />
@@ -285,6 +288,15 @@ export function Viewer() {
               onEnterKey={onOpenKeyDialog}
               onSync={() => runSync(false)}
               onLoad={() => fileInputRef.current?.click()}
+            />
+          ) : effectiveView === "today" ? (
+            <TodayView
+              apiKey={apiKey.readUserKey()}
+              canTrack={apiKey.canSync}
+              profile={cache.profile}
+              weeks={cache.weeks}
+              onEnterKey={onOpenKeyDialog}
+              onSync={() => runSync(false)}
             />
           ) : effectiveView === "profile" && cache.profile ? (
             <ProfileDetail profile={cache.profile} />
