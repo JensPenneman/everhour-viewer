@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import type { WeekDay, WeekEntry, WeekRecord, WeekTaskRef } from "@/lib/everhour";
-import { recentTasks } from "@/lib/live/recent-tasks";
+import { recentTasks } from "@/features/live/lib/recent-tasks";
 
 function task(id: string): WeekTaskRef {
   return { id, name: id.toUpperCase(), linearKey: id.toUpperCase(), url: null, labels: [] };

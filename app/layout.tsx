@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import { Viewer } from "@/components/viewer";
+import { Viewer } from "@/shared/components";
 import { AppProviders } from "./providers";
 import "./globals.css";
 

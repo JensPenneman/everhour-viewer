@@ -1,5 +1,9 @@
 import { describe, it, expect } from "vitest";
-import { DAY_TARGET_SECONDS, WEEK_TARGET_SECONDS, targetProgress } from "@/lib/live/targets";
+import {
+  DAY_TARGET_SECONDS,
+  WEEK_TARGET_SECONDS,
+  targetProgress,
+} from "@/features/live/lib/targets";
 
 describe("targets", () => {
   it("uses 8u / 40u defaults", () => {

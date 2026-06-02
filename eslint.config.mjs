@@ -30,6 +30,40 @@ const eslintConfig = defineConfig([
       curly: ["error", "multi-line"],
     },
   },
+  // Module boundaries — keep the dependency graph one-directional.
+  {
+    files: ["lib/**/*.{ts,tsx}", "shared/ui/**/*.{ts,tsx}", "shared/hooks/**/*.{ts,tsx}"],
+    rules: {
+      "no-restricted-imports": [
+        "error",
+        {
+          patterns: [
+            {
+              group: ["@/features/*", "@/features/*/**"],
+              message:
+                "The shared kernel (lib/, shared/ui, shared/hooks) must not import feature modules.",
+            },
+          ],
+        },
+      ],
+    },
+  },
+  {
+    files: ["server/**/*.{ts,tsx}"],
+    rules: {
+      "no-restricted-imports": [
+        "error",
+        {
+          patterns: [
+            {
+              group: ["@/features/*", "@/features/*/**", "@/shared/*", "@/shared/*/**"],
+              message: "Server code must not import client feature/shared modules.",
+            },
+          ],
+        },
+      ],
+    },
+  },
   {
     files: ["tests/**/*.{ts,tsx}", "**/*.test.{ts,tsx}", "**/*.spec.{ts,tsx}"],
     rules: {

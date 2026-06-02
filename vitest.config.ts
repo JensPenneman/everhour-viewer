@@ -6,8 +6,8 @@ export default defineConfig({
     alias: {
       "@": resolve(__dirname, "."),
       "@/app": resolve(__dirname, "./app"),
-      "@/components": resolve(__dirname, "./components"),
-      "@/hooks": resolve(__dirname, "./hooks"),
+      "@/features": resolve(__dirname, "./features"),
+      "@/shared": resolve(__dirname, "./shared"),
       "@/lib": resolve(__dirname, "./lib"),
       "@/server": resolve(__dirname, "./server"),
       // `server-only` is a build-time barrier from Next; in unit tests it's a no-op.

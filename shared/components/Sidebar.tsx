@@ -1,0 +1,149 @@
+"use client";
+
+import type { EverhourProfile, WeekRecord } from "@/lib/everhour";
+import { StatusPill } from "@/shared/ui";
+import { fmtDateShort, fmtDuration } from "@/lib/format";
+
+export type SidebarView = "empty" | "today" | "profile" | "week";
+
+export interface SidebarProps {
+  readonly profile: EverhourProfile | null;
+  readonly weeks: ReadonlyArray<WeekRecord>;
+  readonly activeIso: string | null;
+  readonly view: SidebarView;
+  readonly onSelectToday: () => void;
+  readonly onSelectWeek: (iso: string) => void;
+  readonly onSelectProfile: () => void;
+}
+
+export function Sidebar({
+  profile,
+  weeks,
+  activeIso,
+  view,
+  onSelectToday,
+  onSelectWeek,
+  onSelectProfile,
+}: SidebarProps) {
+  if (!profile && weeks.length === 0) return null;
+
+  return (
+    <aside
+      aria-label="Navigatie"
+      className="w-[300px] bg-panel border-r border-border overflow-hidden shrink-0 flex flex-col"
+    >
+      <button
+        type="button"
+        onClick={onSelectToday}
+        className={`px-4 py-3 border-b border-border flex items-center gap-2.5 cursor-pointer select-none text-left hover:bg-hover ${
+          view === "today" ? "bg-accent-bg" : ""
+        }`}
+      >
+        <span
+          className={`text-[15px] ${view === "today" ? "text-accent" : "text-muted"}`}
+          aria-hidden="true"
+        >
+          ⏱
+        </span>
+        <span className={`font-semibold text-[13.5px] ${view === "today" ? "text-accent" : ""}`}>
+          Vandaag
+        </span>
+      </button>
+
+      {profile ? (
+        <ProfileCard profile={profile} active={view === "profile"} onClick={onSelectProfile} />
+      ) : null}
+
+      {weeks.length > 0 ? (
+        <div className="px-4 pt-3 pb-1.5 text-[11px] text-muted uppercase tracking-wider font-semibold flex items-center justify-between">
+          <span>Weken</span>
+          <span className="tabular-nums">{weeks.length}</span>
+        </div>
+      ) : null}
+
+      <div className="flex-1 overflow-y-auto">
+        {weeks.map((w) => (
+          <WeekRow
+            key={w.week.isoWeek}
+            week={w}
+            active={w.week.isoWeek === activeIso && view === "week"}
+            onClick={() => onSelectWeek(w.week.isoWeek)}
+          />
+        ))}
+      </div>
+    </aside>
+  );
+}
+
+function ProfileCard({
+  profile,
+  active,
+  onClick,
+}: {
+  profile: EverhourProfile;
+  active: boolean;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={`px-4 py-3 border-b border-border flex items-center gap-3 cursor-pointer select-none hover:bg-hover text-left ${
+        active ? "bg-accent-bg" : ""
+      }`}
+    >
+      {profile.avatarUrl ? (
+        // eslint-disable-next-line @next/next/no-img-element
+        <img
+          src={profile.avatarUrl}
+          alt=""
+          className="w-9 h-9 rounded-full bg-hover object-cover shrink-0"
+          onError={(e) => (e.currentTarget.style.display = "none")}
+        />
+      ) : (
+        <div className="w-9 h-9 rounded-full bg-accent-bg text-accent flex items-center justify-center font-semibold text-[13px] shrink-0">
+          {profile.name?.charAt(0) ?? "?"}
+        </div>
+      )}
+      <div className="min-w-0 flex-1">
+        <div className="font-semibold text-[13px] truncate">{profile.name}</div>
+        <div className="text-muted text-[12px] truncate">
+          {profile.headline || profile.role || ""}
+        </div>
+      </div>
+    </button>
+  );
+}
+
+function WeekRow({
+  week,
+  active,
+  onClick,
+}: {
+  week: WeekRecord;
+  active: boolean;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={`w-full text-left px-4 py-2.5 border-b border-border cursor-pointer border-l-[3px] select-none ${
+        active ? "bg-accent-bg border-l-accent" : "border-l-transparent hover:bg-hover"
+      }`}
+    >
+      <div className="flex items-center justify-between gap-2">
+        <div className="font-semibold text-[13px] tabular-nums">{week.week.isoWeek}</div>
+        <span className="tabular-nums font-medium text-[12px] text-muted">
+          {fmtDuration(week.totals.seconds)}
+        </span>
+      </div>
+      <div className="text-muted text-[11.5px] mt-0.5 flex items-center justify-between gap-2">
+        <span>
+          {fmtDateShort(week.week.from)} – {fmtDateShort(week.week.to)}
+        </span>
+        <StatusPill status={week.approval.status} />
+      </div>
+    </button>
+  );
+}

@@ -11,7 +11,7 @@ import {
   foreignNetEditSeconds,
   isForeignActor,
   resolveActorLabel,
-} from "@/components/viewer/day-detail/day-audit";
+} from "@/features/timesheets/components/day-detail/day-audit";
 
 const OWNER = 1408104; // Jens
 const BOSS = 1319953; // Thomas (admin)

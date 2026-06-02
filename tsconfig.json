@@ -20,8 +20,8 @@
     "paths": {
       "@/*": ["./*"],
       "@/app/*": ["./app/*"],
-      "@/components/*": ["./components/*"],
-      "@/hooks/*": ["./hooks/*"],
+      "@/features/*": ["./features/*"],
+      "@/shared/*": ["./shared/*"],
       "@/lib/*": ["./lib/*"],
       "@/server/*": ["./server/*"]
     }
