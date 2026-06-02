@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { Viewer } from "@/components/viewer";
+import { AppProviders } from "./providers";
 import "./globals.css";
 
 export const metadata: Metadata = {
@@ -22,8 +23,10 @@ export default function RootLayout({
   return (
     <html lang="nl" className="h-full antialiased">
       <body className="min-h-full flex flex-col">
-        <Viewer />
-        {children}
+        <AppProviders>
+          <Viewer />
+          {children}
+        </AppProviders>
       </body>
     </html>
   );

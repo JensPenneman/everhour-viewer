@@ -1,9 +1,11 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState, useSyncExternalStore } from "react";
+import { useCallback, useMemo, useState } from "react";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import type { DayEvent, DayEventKind } from "@/lib/events";
 import { PROVIDERS } from "@/lib/providers";
-import { readManualEvents, STORAGE_KEYS, writeManualEvents } from "@/lib/storage";
+import { eventKeys } from "@/lib/query";
+import { readManualEvents, writeManualEvents } from "@/lib/storage";
 
 export interface DayEventsApi {
   /** All known events (manual + provider-sourced) within the active range. */
@@ -22,77 +24,73 @@ export interface DayEventsApi {
   readonly renameManual: (id: string, label: string) => void;
   /** Refocus the provider window. Idempotent; cheap to call. */
   readonly setRange: (from: string, to: string) => void;
-  /**
-   * Notify the hook that a provider's underlying state has changed
-   * (e.g. an .ics file was just imported) and a re-fetch is required.
-   */
+  /** Notify the hook that a provider's state changed and a re-fetch is required. */
   readonly refreshProviders: () => void;
 }
 
+const EMPTY: ReadonlyArray<DayEvent> = Object.freeze([]);
+const PROVIDERS_KEY = [...eventKeys.all, "providers"] as const;
+
 /**
- * Owns the day-event overlay state.
+ * Owns the day-event overlay state, backed by TanStack Query.
  *
- * Manual events live in `localStorage`; they're read through
- * `useSyncExternalStore` so the value is computed at render time
- * (no setState-in-effect) and stays in sync across tabs for free via
- * the native `storage` event. Provider events are pulled on demand
- * from the configured {@link PROVIDERS} registry.
- *
- * The hook exposes a `forDate` callback rather than a pre-built map
- * because the day-detail render path needs a handful of lookups per
- * week — building a map per render would dominate the cost.
+ * Manual events are a localStorage-backed query (writes go through a mutation;
+ * cross-tab + same-tab refresh via the storage→invalidation bridge — see
+ * `writeManualEvents`, which dispatches a synthetic `storage` event). Provider
+ * events (holidays, ICS) are a query keyed on the active range. `forDate` is a
+ * callback over a memoised map, since the day-detail render does several
+ * lookups per week.
  */
 export function useDayEvents(): DayEventsApi {
-  const manual = useSyncExternalStore(
-    subscribeToStorage,
-    getManualSnapshot,
-    getServerManualSnapshot,
-  );
+  const client = useQueryClient();
 
-  const [providerEvents, setProviderEvents] = useState<ReadonlyArray<DayEvent>>([]);
+  const { data: manual = EMPTY } = useQuery({
+    queryKey: eventKeys.manual(),
+    queryFn: () => readManualEvents(),
+    staleTime: Infinity,
+    gcTime: Infinity,
+  });
+
   const [range, setRangeState] = useState<{ from: string; to: string } | null>(null);
-  const [providerRefresh, setProviderRefresh] = useState(0);
 
-  useEffect(() => {
-    if (!range) return;
-    let cancelled = false;
-    const controller = new AbortController();
-
-    void (async () => {
+  const { data: providerEvents = EMPTY } = useQuery({
+    queryKey: range ? eventKeys.providers(range.from, range.to) : eventKeys.providers("", ""),
+    queryFn: async ({ signal }) => {
+      if (!range) return EMPTY;
       const results = await Promise.all(
         PROVIDERS.map(async (p) => {
           if (!p.status().ready) return [] as ReadonlyArray<DayEvent>;
           try {
-            return await p.fetchEvents({
-              from: range.from,
-              to: range.to,
-              signal: controller.signal,
-            });
+            return await p.fetchEvents({ from: range.from, to: range.to, signal });
           } catch (e) {
             console.error(`[providers] ${p.meta.id} failed:`, e);
             return [] as ReadonlyArray<DayEvent>;
           }
         }),
       );
-      if (!cancelled) setProviderEvents(results.flat());
-    })();
+      return results.flat();
+    },
+    enabled: !!range,
+    staleTime: 5 * 60_000,
+  });
 
-    return () => {
-      cancelled = true;
-      controller.abort();
-    };
-  }, [range, providerRefresh]);
+  const { mutate: writeManual } = useMutation({
+    mutationFn: (events: ReadonlyArray<DayEvent>) => {
+      writeManualEvents(events);
+      return Promise.resolve(events);
+    },
+    onSuccess: () => {
+      void client.invalidateQueries({ queryKey: eventKeys.manual() });
+    },
+  });
 
   const setRange = useCallback((from: string, to: string) => {
-    setRangeState((cur) => {
-      if (cur && cur.from === from && cur.to === to) return cur;
-      return { from, to };
-    });
+    setRangeState((cur) => (cur && cur.from === from && cur.to === to ? cur : { from, to }));
   }, []);
 
   const refreshProviders = useCallback(() => {
-    setProviderRefresh((n) => n + 1);
-  }, []);
+    void client.invalidateQueries({ queryKey: PROVIDERS_KEY });
+  }, [client]);
 
   const all = useMemo<ReadonlyArray<DayEvent>>(
     () => [...providerEvents, ...manual],
@@ -110,31 +108,40 @@ export function useDayEvents(): DayEventsApi {
   }, [all]);
 
   const forDate = useCallback(
-    (isoDate: string): ReadonlyArray<DayEvent> => byDate.get(isoDate) ?? [],
+    (isoDate: string): ReadonlyArray<DayEvent> => byDate.get(isoDate) ?? EMPTY,
     [byDate],
   );
 
-  const addManual = useCallback<DayEventsApi["addManual"]>((date, kind, opts) => {
-    const next: DayEvent = {
-      id: `manual:${date}:${kind}:${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`,
-      date,
-      kind,
-      source: "manual",
-      label: opts?.label ?? defaultManualLabel(kind),
-      ...(opts?.description !== undefined ? { description: opts.description } : {}),
-      ...(opts?.hours !== undefined ? { hours: opts.hours } : {}),
-    };
-    writeManualEvents([...readManualEvents(), next]);
-    return next;
-  }, []);
+  const addManual = useCallback<DayEventsApi["addManual"]>(
+    (date, kind, opts) => {
+      const next: DayEvent = {
+        id: `manual:${date}:${kind}:${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`,
+        date,
+        kind,
+        source: "manual",
+        label: opts?.label ?? defaultManualLabel(kind),
+        ...(opts?.description !== undefined ? { description: opts.description } : {}),
+        ...(opts?.hours !== undefined ? { hours: opts.hours } : {}),
+      };
+      writeManual([...readManualEvents(), next]);
+      return next;
+    },
+    [writeManual],
+  );
 
-  const removeManual = useCallback((id: string) => {
-    writeManualEvents(readManualEvents().filter((e) => e.id !== id));
-  }, []);
+  const removeManual = useCallback(
+    (id: string) => {
+      writeManual(readManualEvents().filter((e) => e.id !== id));
+    },
+    [writeManual],
+  );
 
-  const renameManual = useCallback((id: string, label: string) => {
-    writeManualEvents(readManualEvents().map((e) => (e.id === id ? { ...e, label } : e)));
-  }, []);
+  const renameManual = useCallback(
+    (id: string, label: string) => {
+      writeManual(readManualEvents().map((e) => (e.id === id ? { ...e, label } : e)));
+    },
+    [writeManual],
+  );
 
   return {
     all,
@@ -146,40 +153,6 @@ export function useDayEvents(): DayEventsApi {
     refreshProviders,
   };
 }
-
-/* ────────────────────────────────────────────────────────────────────── */
-/* useSyncExternalStore plumbing for manual events.                       */
-/*                                                                        */
-/* Cache the parsed snapshot under a version counter so that repeated     */
-/* `getSnapshot` calls between mutations return a stable reference. (the  */
-/* hook re-invokes getSnapshot on every render — returning a fresh array  */
-/* each time would trip React's tearing detection and loop forever.)     */
-/* ────────────────────────────────────────────────────────────────────── */
-
-let cachedManual: ReadonlyArray<DayEvent> | null = null;
-
-function subscribeToStorage(onChange: () => void): () => void {
-  if (typeof window === "undefined") return () => undefined;
-  const handler = (e: StorageEvent) => {
-    if (e.key === null || e.key === STORAGE_KEYS.dayEvents) {
-      cachedManual = null; // invalidate so the next getSnapshot re-reads
-      onChange();
-    }
-  };
-  window.addEventListener("storage", handler);
-  return () => window.removeEventListener("storage", handler);
-}
-
-function getManualSnapshot(): ReadonlyArray<DayEvent> {
-  if (cachedManual !== null) return cachedManual;
-  cachedManual = readManualEvents();
-  return cachedManual;
-}
-
-function getServerManualSnapshot(): ReadonlyArray<DayEvent> {
-  return EMPTY_SSR;
-}
-const EMPTY_SSR: ReadonlyArray<DayEvent> = Object.freeze([]);
 
 function defaultManualLabel(kind: DayEventKind): string {
   switch (kind) {

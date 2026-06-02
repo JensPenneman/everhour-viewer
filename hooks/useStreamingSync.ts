@@ -1,8 +1,10 @@
 "use client";
 
 import { useCallback, useRef, useState } from "react";
-import type { EverhourProfile, WeekRecord } from "@/lib/everhour";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
+import type { WeekRecord } from "@/lib/everhour";
 import { fmtDuration } from "@/lib/format";
+import { profileKey, timesheetKeys } from "@/lib/query";
 import { readNdjsonStream } from "@/lib/streaming/ndjson";
 import type { SyncEvent } from "@/server/sync";
 
@@ -25,13 +27,6 @@ export interface StreamingSyncOptions {
   }>;
   readonly weeksBack?: number;
   readonly force?: boolean;
-  readonly onProfile?: (profile: EverhourProfile) => void;
-  readonly onWeek?: (
-    week: WeekRecord,
-    kind: "new" | "updated",
-    current: number,
-    total: number,
-  ) => void;
   readonly onDone?: (counts: SyncProgress["counts"] & { totalWeeks: number }) => void;
   readonly onError?: (message: string, status?: number) => void;
 }
@@ -51,19 +46,31 @@ const INITIAL_PROGRESS: SyncProgress = {
   counts: { new: 0, updated: 0, skipped: 0 },
 };
 
+/** Merge a streamed week into the cached array by ISO-week key. */
+function upsertWeek(
+  cur: ReadonlyArray<WeekRecord> | undefined,
+  week: WeekRecord,
+): ReadonlyArray<WeekRecord> {
+  const next = [...(cur ?? [])];
+  const idx = next.findIndex((w) => w.week.isoWeek === week.week.isoWeek);
+  if (idx >= 0) next[idx] = week;
+  else next.push(week);
+  return next;
+}
+
 /**
- * Drive a streaming sync against `POST /api/sync`.
+ * Drive a streaming sync against `POST /api/sync`, modelled as a mutation.
  *
- * The hook is stateful: it owns the progress object that the header
- * renders, and exposes `run()` + `abort()` to start and cancel. Callbacks
- * deliver each parsed NDJSON event so the caller can apply mutations to
- * its own state (e.g. `useViewerCache.upsertWeek`).
- *
- * After completion the progress object lingers briefly (so the user sees
- * "Klaar.") then resets — controlled by a debounce timer the hook owns,
- * so callers don't have to.
+ * As each NDJSON event arrives the profile and weeks are written **directly**
+ * into the query cache via `setQueryData` (the persister then writes them to
+ * localStorage, throttled), so there are no `onProfile`/`onWeek` callbacks for
+ * the caller to wire — the cache is the single source of truth. The bespoke
+ * `progress` object (for the header) stays local state; `onDone`/`onError`
+ * remain for toasts. After completion the progress lingers briefly then
+ * resets.
  */
 export function useStreamingSync(): StreamingSyncApi {
+  const client = useQueryClient();
   const [progress, setProgress] = useState<SyncProgress | null>(null);
   const controllerRef = useRef<AbortController | null>(null);
   const clearTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -83,9 +90,10 @@ export function useStreamingSync(): StreamingSyncApi {
     reset();
   }, [reset]);
 
-  const run = useCallback(
-    async (options: StreamingSyncOptions) => {
-      // Cancel any prior in-flight sync.
+  const { mutateAsync } = useMutation({
+    mutationKey: ["sync", "run"],
+    retry: false,
+    mutationFn: async (options: StreamingSyncOptions) => {
       controllerRef.current?.abort();
       const controller = new AbortController();
       controllerRef.current = controller;
@@ -123,7 +131,7 @@ export function useStreamingSync(): StreamingSyncApi {
 
         await readNdjsonStream<SyncEvent>(resp.body, (event) => {
           if (event.type === "profile") {
-            options.onProfile?.(event.profile);
+            client.setQueryData(profileKey, event.profile);
             setProgress({
               phase: "fetching",
               current: 0,
@@ -150,7 +158,9 @@ export function useStreamingSync(): StreamingSyncApi {
           if (event.type === "week") {
             if (event.kind === "new") counts.new++;
             else counts.updated++;
-            options.onWeek?.(event.week, event.kind, event.current, event.total);
+            client.setQueryData<ReadonlyArray<WeekRecord>>(timesheetKeys.weeks(), (cur) =>
+              upsertWeek(cur, event.week),
+            );
             setProgress({
               phase: "processing",
               current: event.current,
@@ -161,8 +171,7 @@ export function useStreamingSync(): StreamingSyncApi {
             return;
           }
           if (event.type === "done") {
-            const summary = { ...counts, totalWeeks: event.counts.totalWeeks };
-            options.onDone?.(summary);
+            options.onDone?.({ ...counts, totalWeeks: event.counts.totalWeeks });
             setProgress({
               phase: "done",
               current: counts.new + counts.updated,
@@ -175,7 +184,7 @@ export function useStreamingSync(): StreamingSyncApi {
           if (event.type === "error") {
             throw new SyncStreamError(event.message, event.status);
           }
-          // skip events are informational; we already counted them via `plan`.
+          // skip events are informational; already counted via `plan`.
         });
       } catch (e) {
         if (controller.signal.aborted) {
@@ -197,7 +206,13 @@ export function useStreamingSync(): StreamingSyncApi {
         reset(1500);
       }
     },
-    [reset],
+  });
+
+  const run = useCallback(
+    async (options: StreamingSyncOptions) => {
+      await mutateAsync(options);
+    },
+    [mutateAsync],
   );
 
   return {

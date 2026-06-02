@@ -143,6 +143,10 @@ export function Viewer() {
         return;
       }
 
+      // Profile + weeks are written straight into the query cache by the sync
+      // mutation as events stream in; no onProfile/onWeek wiring needed. The
+      // home view auto-shows the latest week, and an explicit week URL is
+      // left untouched.
       await sync.run({
         apiKey: apiKey.readUserKey(),
         force,
@@ -151,10 +155,6 @@ export function Viewer() {
           status: w.approval.status,
           schemaVersion: w.schemaVersion,
         })),
-        onProfile: (profile) => cache.setProfile(profile),
-        // The home view auto-shows the latest week as weeks stream in, so no
-        // navigation is needed here; an explicit week URL is left untouched.
-        onWeek: (week) => cache.upsertWeek(week),
         onDone: (counts) => {
           toastsPush(
             `Sync klaar — ${counts.new} nieuw · ${counts.updated} bijgewerkt · ${counts.skipped} ongewijzigd`,
@@ -243,7 +243,9 @@ export function Viewer() {
   );
 
   const hasData = cache.profile !== null || cache.weeks.length > 0;
-  const showWelcome = effectiveView === "empty";
+  // Defer the welcome-vs-data decision until the persisted cache has restored,
+  // so a returning user never flashes the onboarding screen on a cold load.
+  const showWelcome = cache.hydrated && effectiveView === "empty";
 
   return (
     <div className="h-screen flex flex-col overflow-hidden bg-background">
@@ -281,7 +283,7 @@ export function Viewer() {
         />
 
         <main className="vt-main flex-1 overflow-y-auto px-9 py-7">
-          {showWelcome ? (
+          {!cache.hydrated ? null : showWelcome ? (
             <Welcome
               hasUserKey={apiKey.hasUserKey}
               hasEnvKey={apiKey.hasEnvKey === true}

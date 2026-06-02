@@ -1,12 +1,12 @@
 /**
- * All localStorage keys live here.
+ * App-owned localStorage keys.
  *
- * The `v1` suffix gives us an explicit upgrade path: if a future cache
- * schema is incompatible we can introduce `v2` and ignore (or migrate)
- * `v1` rather than try to detect drift inside the reader.
+ * The cached profile + weeks now live in the persisted TanStack Query blob
+ * (see `lib/query/persister.ts`), not here. These two keys are the remaining
+ * stores whose source of truth is their own localStorage entry: the API key
+ * and the manual day-events. The `v1` suffix keeps an explicit upgrade path.
  */
 export const STORAGE_KEYS = {
-  cache: "everhour_viewer_data_v1",
   apiKey: "everhour_api_key",
   dayEvents: "everhour_viewer_day_events_v1",
 } as const;

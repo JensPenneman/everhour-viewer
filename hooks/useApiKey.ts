@@ -1,7 +1,8 @@
 "use client";
 
-import { useCallback, useEffect, useState, useSyncExternalStore } from "react";
-import { STORAGE_KEYS } from "@/lib/storage";
+import { useCallback } from "react";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { authKeys, invalidateServerQueries, syncKeys } from "@/lib/query";
 import { readApiKey, writeApiKey } from "@/lib/storage";
 
 export interface ApiKeyApi {
@@ -18,49 +19,50 @@ export interface ApiKeyApi {
 }
 
 /**
- * Reactive wrapper around the API key storage + the `/api/sync` capability
- * probe.
+ * The API key + capability probe, both modelled as queries.
  *
- * Uses `useSyncExternalStore` for the localStorage read so the value is
- * computed on first render without scheduling an effect that updates
- * state. This both removes a render and stays compatible with React's
- * cross-tab `storage` event for free.
- *
- * The env-key probe (network call) lives in a `useEffect` because we
- * deliberately want it to settle after first paint.
+ * The user key is a localStorage-backed query (its source of truth stays its
+ * own key, not the persisted blob); cross-tab + same-tab refresh is handled by
+ * the storage→invalidation bridge and the write mutation's `onSuccess`. The
+ * env-key capability is a short-lived server query. A key change invalidates
+ * every server query, since the credential they authenticate with changed.
  */
 export function useApiKey(): ApiKeyApi {
-  const hasUserKey = useSyncExternalStore(
-    subscribeToStorage,
-    () => !!readApiKey(),
-    () => false, // SSR snapshot: pretend the key isn't set
-  );
+  const client = useQueryClient();
 
-  const [hasEnvKey, setHasEnvKey] = useState<boolean | null>(null);
+  const { data: userKey } = useQuery({
+    queryKey: authKeys.apiKey(),
+    queryFn: () => readApiKey(),
+    staleTime: Infinity,
+    gcTime: Infinity,
+  });
 
-  useEffect(() => {
-    const controller = new AbortController();
-    fetch("/api/sync", { signal: controller.signal })
-      .then((r) => r.json() as Promise<{ hasEnvKey: boolean }>)
-      .then((d) => setHasEnvKey(d.hasEnvKey))
-      .catch(() => {
-        if (!controller.signal.aborted) setHasEnvKey(false);
-      });
-    return () => controller.abort();
-  }, []);
+  const { data: hasEnvKey = null } = useQuery({
+    queryKey: syncKeys.capability(),
+    queryFn: async () => {
+      const resp = await fetch("/api/sync");
+      const data = (await resp.json()) as { hasEnvKey: boolean };
+      return data.hasEnvKey;
+    },
+    staleTime: 5 * 60_000,
+    retry: 1,
+  });
 
-  const setUserKey = useCallback((value: string) => {
-    writeApiKey(value);
-    // useSyncExternalStore subscribers are notified by the `storage` event,
-    // which doesn't fire for changes in the *same* tab. Dispatch one so
-    // any in-tab subscribers refresh.
-    if (typeof window !== "undefined") {
-      window.dispatchEvent(new StorageEvent("storage", { key: STORAGE_KEYS.apiKey }));
-    }
-  }, []);
+  const { mutate: mutateKey } = useMutation({
+    mutationFn: (value: string) => {
+      writeApiKey(value);
+      return Promise.resolve(value);
+    },
+    onSuccess: () => {
+      void client.invalidateQueries({ queryKey: authKeys.apiKey() });
+      invalidateServerQueries(client);
+    },
+  });
 
+  const setUserKey = useCallback((value: string) => mutateKey(value), [mutateKey]);
   const readUserKey = useCallback(() => readApiKey(), []);
 
+  const hasUserKey = !!userKey;
   return {
     hasUserKey,
     hasEnvKey,
@@ -68,13 +70,4 @@ export function useApiKey(): ApiKeyApi {
     setUserKey,
     readUserKey,
   };
-}
-
-function subscribeToStorage(onChange: () => void): () => void {
-  if (typeof window === "undefined") return () => undefined;
-  const handler = (e: StorageEvent) => {
-    if (e.key === null || e.key === STORAGE_KEYS.apiKey) onChange();
-  };
-  window.addEventListener("storage", handler);
-  return () => window.removeEventListener("storage", handler);
 }

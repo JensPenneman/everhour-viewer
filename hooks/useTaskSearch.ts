@@ -1,7 +1,9 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { keepPreviousData, useQuery } from "@tanstack/react-query";
 import type { TaskHit } from "@/lib/everhour";
+import { liveFetch, liveKeys } from "@/lib/query";
 
 export interface TaskSearchApi {
   readonly query: string;
@@ -14,50 +16,38 @@ export interface TaskSearchApi {
 const DEBOUNCE_MS = 250;
 const MIN_QUERY = 2;
 
-/** Debounced task search against `/api/tasks`, for the timer task picker. */
+/**
+ * Debounced task search against `/api/tasks`, for the timer task picker.
+ *
+ * The raw input is debounced into the query key; the previous results stay
+ * visible while the next query loads (`keepPreviousData`) so the list doesn't
+ * flicker between keystrokes.
+ */
 export function useTaskSearch(apiKey: string | null): TaskSearchApi {
   const [query, setQuery] = useState("");
-  const [results, setResults] = useState<ReadonlyArray<TaskHit>>([]);
-  const [searching, setSearching] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [debounced, setDebounced] = useState("");
 
   useEffect(() => {
-    const q = query.trim();
-    // Synchronous resets/loading flags are the intended debounced-fetch
-    // pattern; the result setState lives in the async callback below.
-    /* eslint-disable react-hooks/set-state-in-effect */
-    if (q.length < MIN_QUERY) {
-      setResults([]);
-      setSearching(false);
-      setError(null);
-      return;
-    }
+    const t = setTimeout(() => setDebounced(query.trim()), DEBOUNCE_MS);
+    return () => clearTimeout(t);
+  }, [query]);
 
-    const controller = new AbortController();
-    setSearching(true);
-    setError(null);
-    /* eslint-enable react-hooks/set-state-in-effect */
+  const enabled = debounced.length >= MIN_QUERY;
+  const search = useQuery({
+    queryKey: liveKeys.tasks(debounced),
+    queryFn: ({ signal }) =>
+      liveFetch<TaskHit[]>(`/api/tasks?q=${encodeURIComponent(debounced)}`, apiKey, { signal }),
+    enabled,
+    staleTime: 60_000,
+    gcTime: 5 * 60_000,
+    placeholderData: keepPreviousData,
+  });
 
-    const timer = setTimeout(async () => {
-      try {
-        const resp = await fetch(`/api/tasks?q=${encodeURIComponent(q)}`, {
-          headers: apiKey ? { "x-everhour-key": apiKey } : {},
-          signal: controller.signal,
-        });
-        if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
-        setResults((await resp.json()) as TaskHit[]);
-      } catch (e) {
-        if ((e as Error).name !== "AbortError") setError("Zoeken mislukt");
-      } finally {
-        setSearching(false);
-      }
-    }, DEBOUNCE_MS);
-
-    return () => {
-      controller.abort();
-      clearTimeout(timer);
-    };
-  }, [query, apiKey]);
-
-  return { query, setQuery, results, searching, error };
+  return {
+    query,
+    setQuery,
+    results: enabled ? (search.data ?? []) : [],
+    searching: enabled && search.isFetching,
+    error: search.isError ? "Zoeken mislukt" : null,
+  };
 }

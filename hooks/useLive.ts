@@ -1,10 +1,15 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { differenceInSeconds, startOfWeek } from "date-fns";
+import { errorMessage, errorStatus } from "@/lib/errors";
 import type { ClockStatus, LiveEntry, Timer } from "@/lib/everhour";
 import { parseLocalDate, toLocalIsoDate } from "@/lib/format";
+import { liveFetch, liveKeys } from "@/lib/query";
 
 const POLL_MS = 20_000;
+const EMPTY_ENTRIES: ReadonlyArray<LiveEntry> = Object.freeze([]);
 
 export type LiveAction = "start" | "stop" | "clock";
 
@@ -35,55 +40,22 @@ export interface LiveApi {
   readonly refresh: () => void;
 }
 
-interface TimerSnapshot {
-  readonly timer: Timer;
-  /** `Date.now()` when the snapshot was taken, to extrapolate live elapsed. */
-  readonly at: number;
-}
-
-async function liveFetch<T>(
-  path: string,
-  apiKey: string | null,
-  init?: { method?: string; body?: unknown; signal?: AbortSignal },
-): Promise<T> {
-  const resp = await fetch(path, {
-    method: init?.method ?? "GET",
-    headers: {
-      ...(apiKey ? { "x-everhour-key": apiKey } : {}),
-      ...(init?.body !== undefined ? { "Content-Type": "application/json" } : {}),
-    },
-    body: init?.body !== undefined ? JSON.stringify(init.body) : undefined,
-    signal: init?.signal,
-  });
-  if (!resp.ok) {
-    let message = `HTTP ${resp.status}`;
-    try {
-      const j = (await resp.json()) as { error?: string };
-      if (j?.error) message = j.error;
-    } catch {
-      /* ignore */
-    }
-    const err = new Error(message) as Error & { status?: number };
-    err.status = resp.status;
-    throw err;
-  }
-  return resp.json() as Promise<T>;
-}
-
 /** Monday (local) of the ISO week containing `today` (a `YYYY-MM-DD` string). */
 function mondayOf(today: string): string {
-  const d = parseLocalDate(today);
-  const dow = (d.getDay() + 6) % 7; // Mon=0 … Sun=6
-  d.setDate(d.getDate() - dow);
-  return toLocalIsoDate(d);
+  return toLocalIsoDate(startOfWeek(parseLocalDate(today), { weekStartsOn: 1 }));
 }
 
 /**
- * Owns all live state for the Vandaag view: the running timer (polled +
- * ticked locally for a smooth elapsed display), today's attendance clock, and
- * this week-to-date's committed entries. Actions (start/stop/clock) re-read
- * from the server so the running timer, clock, and totals never drift —
- * starting a timer, for instance, also auto-clocks-in upstream.
+ * Owns all live state for the Vandaag view: the running timer (polled every
+ * 20s + on focus, ticked locally for a smooth elapsed display), today's
+ * attendance clock, and this week-to-date's committed entries — all as
+ * TanStack queries. Actions (start/stop/clock) are mutations with `retry:
+ * false` (no double-start) that invalidate the timer/clock/time queries so
+ * totals never drift (starting a timer also auto-clocks-in upstream).
+ *
+ * The public `LiveApi` is unchanged; the API key is passed in for the request
+ * header but is never part of a query key (a key change is handled by
+ * invalidation, see the storage→invalidation bridge).
  */
 export function useLive(
   apiKey: string | null,
@@ -91,140 +63,117 @@ export function useLive(
   today: string,
   enabled = true,
 ): LiveApi {
-  // `apiKey` is the header value (may be null when the server has an env key);
-  // `enabled` is whether tracking is possible at all (user key OR env key).
-  const ready = enabled && !!userId;
+  const ready = enabled && userId !== null;
   const weekStart = useMemo(() => mondayOf(today), [today]);
+  const client = useQueryClient();
 
-  const [snapshot, setSnapshot] = useState<TimerSnapshot | null>(null);
-  const [clock, setClock] = useState<ClockStatus | null>(null);
-  const [entries, setEntries] = useState<ReadonlyArray<LiveEntry>>([]);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [busy, setBusy] = useState<LiveAction | null>(null);
-  const [clockControlUnavailable, setClockControlUnavailable] = useState(false);
   const [nowMs, setNowMs] = useState(() => Date.now());
-  const [reloadKey, setReloadKey] = useState(0);
+  const [actionError, setActionError] = useState<string | null>(null);
+  const [clockControlUnavailable, setClockControlUnavailable] = useState(false);
 
-  const refresh = useCallback(() => setReloadKey((k) => k + 1), []);
+  const timerQuery = useQuery({
+    queryKey: liveKeys.timer(),
+    queryFn: ({ signal }) => liveFetch<Timer>("/api/timer", apiKey, { signal }),
+    enabled: ready,
+    refetchInterval: POLL_MS,
+    refetchOnWindowFocus: true,
+    staleTime: 0,
+    gcTime: 60_000,
+  });
 
-  // Initial load + poll + refresh-on-focus. One effect owns the lifecycle.
-  useEffect(() => {
-    if (!ready) return;
-    const controller = new AbortController();
-    let cancelled = false;
+  const clockQuery = useQuery({
+    queryKey: ready ? liveKeys.clock(userId, today) : liveKeys.clock(-1, today),
+    queryFn: ({ signal }) =>
+      liveFetch<ClockStatus>(`/api/clock?userId=${userId}&today=${today}`, apiKey, { signal }),
+    enabled: ready,
+    staleTime: 30_000,
+  });
 
-    const loadTimer = async () => {
-      const t = await liveFetch<Timer>("/api/timer", apiKey, { signal: controller.signal });
-      if (!cancelled) setSnapshot({ timer: t, at: Date.now() });
-    };
-    const loadRest = async () => {
-      const [c, e] = await Promise.all([
-        liveFetch<ClockStatus>(`/api/clock?userId=${userId}&today=${today}`, apiKey, {
-          signal: controller.signal,
-        }),
-        liveFetch<LiveEntry[]>(`/api/time?userId=${userId}&from=${weekStart}&to=${today}`, apiKey, {
-          signal: controller.signal,
-        }),
-      ]);
-      if (!cancelled) {
-        setClock(c);
-        setEntries(e);
-      }
-    };
+  const timeQuery = useQuery({
+    queryKey: ready ? liveKeys.time(userId, weekStart, today) : liveKeys.time(-1, weekStart, today),
+    queryFn: ({ signal }) =>
+      liveFetch<LiveEntry[]>(`/api/time?userId=${userId}&from=${weekStart}&to=${today}`, apiKey, {
+        signal,
+      }),
+    enabled: ready,
+    staleTime: 30_000,
+  });
 
-    // Intentional setState-on-(re)load — the standard fetch-on-mount/deps
-    // pattern, same as the hydration in useViewerCache.
-    /* eslint-disable react-hooks/set-state-in-effect */
-    setLoading(true);
-    setError(null);
-    /* eslint-enable react-hooks/set-state-in-effect */
-    Promise.all([loadTimer(), loadRest()])
-      .catch((err) => {
-        if (!cancelled && err?.name !== "AbortError") setError(err?.message ?? "Live data mislukt");
-      })
-      .finally(() => {
-        if (!cancelled) setLoading(false);
-      });
+  const invalidateLive = useCallback(() => {
+    void client.invalidateQueries({ queryKey: liveKeys.all });
+  }, [client]);
 
-    const poll = setInterval(() => {
-      void loadTimer().catch(() => undefined);
-    }, POLL_MS);
-    const onFocus = () => void loadTimer().catch(() => undefined);
-    window.addEventListener("focus", onFocus);
+  const startMutation = useMutation({
+    mutationFn: (taskId: string) =>
+      liveFetch<Timer>("/api/timer", apiKey, { method: "POST", body: { taskId } }),
+    retry: false,
+    onMutate: () => setActionError(null),
+    onSuccess: (timer) => {
+      client.setQueryData(liveKeys.timer(), timer);
+      invalidateLive(); // committed totals + auto clock-in change after starting
+    },
+    onError: (e) => setActionError(errorMessage(e) || "Actie mislukt"),
+  });
 
-    return () => {
-      cancelled = true;
-      controller.abort();
-      clearInterval(poll);
-      window.removeEventListener("focus", onFocus);
-    };
-  }, [ready, apiKey, userId, today, weekStart, reloadKey]);
+  const stopMutation = useMutation({
+    mutationFn: () => liveFetch<Timer>("/api/timer", apiKey, { method: "DELETE" }),
+    retry: false,
+    onMutate: () => setActionError(null),
+    onSuccess: (timer) => {
+      client.setQueryData(liveKeys.timer(), timer);
+      invalidateLive(); // the stopped session is now committed
+    },
+    onError: (e) => setActionError(errorMessage(e) || "Actie mislukt"),
+  });
+
+  const clockMutation = useMutation({
+    mutationFn: (action: "in" | "out") =>
+      liveFetch("/api/clock", apiKey, { method: "POST", body: { action } }),
+    retry: false,
+    onMutate: () => setActionError(null),
+    onSuccess: () => invalidateLive(),
+    onError: (e) => {
+      const status = errorStatus(e);
+      if (status !== undefined && status >= 400 && status < 500) setClockControlUnavailable(true);
+      setActionError(errorMessage(e) || "Actie mislukt");
+    },
+  });
 
   // 1s tick only while a timer is running, so the elapsed display stays live
   // without churning renders when idle.
-  const running = snapshot?.timer.running ?? false;
+  const running = timerQuery.data?.running ?? false;
   useEffect(() => {
     if (!running) return;
     const id = setInterval(() => setNowMs(Date.now()), 1000);
     return () => clearInterval(id);
   }, [running]);
 
-  const act = useCallback(async (action: LiveAction, run: () => Promise<void>) => {
-    setBusy(action);
-    setError(null);
-    try {
-      await run();
-    } catch (err) {
-      const e = err as Error & { status?: number };
-      if (action === "clock" && e.status && e.status >= 400 && e.status < 500) {
-        setClockControlUnavailable(true);
-      }
-      setError(e?.message ?? "Actie mislukt");
-    } finally {
-      setBusy(null);
-    }
-  }, []);
-
   const start = useCallback(
-    (taskId: string) =>
-      act("start", async () => {
-        const t = await liveFetch<Timer>("/api/timer", apiKey, {
-          method: "POST",
-          body: { taskId },
-        });
-        setSnapshot({ timer: t, at: Date.now() });
-        refresh(); // committed totals + auto clock-in change after starting
-      }),
-    [act, apiKey, refresh],
+    async (taskId: string) => {
+      await startMutation.mutateAsync(taskId).catch(() => undefined);
+    },
+    [startMutation],
   );
+  const stop = useCallback(async () => {
+    await stopMutation.mutateAsync().catch(() => undefined);
+  }, [stopMutation]);
+  const clockIn = useCallback(async () => {
+    await clockMutation.mutateAsync("in").catch(() => undefined);
+  }, [clockMutation]);
+  const clockOut = useCallback(async () => {
+    await clockMutation.mutateAsync("out").catch(() => undefined);
+  }, [clockMutation]);
 
-  const stop = useCallback(
-    () =>
-      act("stop", async () => {
-        const t = await liveFetch<Timer>("/api/timer", apiKey, { method: "DELETE" });
-        setSnapshot({ timer: t, at: Date.now() });
-        refresh(); // the stopped session is now committed
-      }),
-    [act, apiKey, refresh],
-  );
-
-  const clockAction = useCallback(
-    (action: "in" | "out") =>
-      act("clock", async () => {
-        await liveFetch("/api/clock", apiKey, { method: "POST", body: { action } });
-        refresh();
-      }),
-    [act, apiKey, refresh],
-  );
-  const clockIn = useCallback(() => clockAction("in"), [clockAction]);
-  const clockOut = useCallback(() => clockAction("out"), [clockAction]);
-
+  const timer = timerQuery.data ?? null;
   const elapsedSec = useMemo(() => {
-    if (!snapshot?.timer.running) return 0;
-    return Math.max(0, snapshot.timer.durationSeconds + (nowMs - snapshot.at) / 1000);
-  }, [snapshot, nowMs]);
+    if (!timer?.running) return 0;
+    return Math.max(
+      0,
+      timer.durationSeconds + differenceInSeconds(nowMs, timerQuery.dataUpdatedAt),
+    );
+  }, [timer, nowMs, timerQuery.dataUpdatedAt]);
 
+  const entries = timeQuery.data ?? EMPTY_ENTRIES;
   const todayEntries = useMemo(() => entries.filter((e) => e.date === today), [entries, today]);
   const committedToday = useMemo(
     () => todayEntries.reduce((acc, e) => acc + e.seconds, 0),
@@ -232,14 +181,26 @@ export function useLive(
   );
   const committedWeek = useMemo(() => entries.reduce((acc, e) => acc + e.seconds, 0), [entries]);
 
+  const busy: LiveAction | null = startMutation.isPending
+    ? "start"
+    : stopMutation.isPending
+      ? "stop"
+      : clockMutation.isPending
+        ? "clock"
+        : null;
+
+  const queryError = timerQuery.error ?? clockQuery.error ?? timeQuery.error;
+  const error =
+    actionError ?? (queryError ? errorMessage(queryError) || "Live data mislukt" : null);
+
   return {
     ready,
-    loading,
+    loading: ready && (timerQuery.isLoading || clockQuery.isLoading || timeQuery.isLoading),
     error,
     busy,
-    timer: snapshot?.timer ?? null,
+    timer,
     elapsedSec,
-    clock,
+    clock: clockQuery.data ?? null,
     clockControlUnavailable,
     todayEntries,
     todaySec: committedToday + elapsedSec,
@@ -248,6 +209,6 @@ export function useLive(
     stop,
     clockIn,
     clockOut,
-    refresh,
+    refresh: invalidateLive,
   };
 }

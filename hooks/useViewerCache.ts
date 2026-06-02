@@ -1,11 +1,12 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useMemo } from "react";
+import { useIsRestoring, useQuery, useQueryClient } from "@tanstack/react-query";
 import type { EverhourProfile, WeekRecord } from "@/lib/everhour";
-import { readCache, writeCache, clearCache } from "@/lib/storage";
+import { PERSIST_MAX_AGE, profileKey, timesheetKeys } from "@/lib/query";
 
 export interface ViewerCacheApi {
-  /** True once the initial `localStorage` hydration has completed. */
+  /** True once the persisted cache has finished restoring. */
   readonly hydrated: boolean;
   readonly profile: EverhourProfile | null;
   readonly weeks: ReadonlyArray<WeekRecord>;
@@ -22,78 +23,86 @@ export interface ViewerCacheApi {
   readonly clear: () => void;
 }
 
+const EMPTY_WEEKS: ReadonlyArray<WeekRecord> = Object.freeze([]);
+
+/** Merge `week` into `cur` by ISO-week key (replace if present, else append). */
+function upsertInto(cur: ReadonlyArray<WeekRecord>, week: WeekRecord): ReadonlyArray<WeekRecord> {
+  const next = [...cur];
+  const idx = next.findIndex((w) => w.week.isoWeek === week.week.isoWeek);
+  if (idx >= 0) next[idx] = week;
+  else next.push(week);
+  return next;
+}
+
 /**
- * Owns the cached profile + weeks, hydrating from `localStorage` and
- * writing back on every mutation.
+ * Owns the cached profile + weeks, now backed by the persisted TanStack Query
+ * cache rather than a hand-rolled localStorage snapshot.
  *
- * The hook intentionally returns a single API object rather than separate
- * tuples so consumers can pull only what they need without re-rendering on
- * unrelated changes (`profile`, `weeks` and `sortedWeeks` are referentially
- * stable when unchanged thanks to `useState` and `useMemo`).
+ * Profile and weeks are separate query keys, so a streaming `upsertWeek` can
+ * never overwrite the profile — the old single-blob stale-closure bug is
+ * impossible by construction. Both keys persist automatically (see the
+ * persister); writes go through `setQueryData`. The public `ViewerCacheApi`
+ * is unchanged so `Viewer` and friends keep working as-is.
  */
 export function useViewerCache(): ViewerCacheApi {
-  const [hydrated, setHydrated] = useState(false);
-  const [profile, setProfileState] = useState<EverhourProfile | null>(null);
-  const [weeks, setWeeksState] = useState<ReadonlyArray<WeekRecord>>([]);
+  const client = useQueryClient();
+  const isRestoring = useIsRestoring();
 
-  useEffect(() => {
-    // SSR-safe hydration from localStorage on first client render. The
-    // intentional double-render — empty → hydrated — is the cost of
-    // staying compatible with both static rendering and the React 19
-    // hydration model. We accept it; using `useSyncExternalStore` here
-    // would require caching mutable cache snapshots to satisfy its
-    // referential-stability contract, which is more complexity than this
-    // pattern saves.
-    const snap = readCache();
-    if (snap) {
-      // eslint-disable-next-line react-hooks/set-state-in-effect -- intentional hydration; see comment above
-      setProfileState(snap.profile);
-      setWeeksState(snap.weeks);
-    }
-    setHydrated(true);
-  }, []);
+  const { data: weeks = EMPTY_WEEKS } = useQuery({
+    queryKey: timesheetKeys.weeks(),
+    queryFn: () =>
+      Promise.resolve(
+        client.getQueryData<ReadonlyArray<WeekRecord>>(timesheetKeys.weeks()) ?? EMPTY_WEEKS,
+      ),
+    staleTime: Infinity,
+    gcTime: PERSIST_MAX_AGE,
+  });
 
-  // Persist the whole snapshot whenever either field changes (after the
-  // initial hydration). Persisting from one effect — rather than inside each
-  // setter — avoids a stale-closure bug where the rapid `upsertWeek` calls
-  // of a sync re-persisted a stale `profile` (null), dropping the profile
-  // from the cache so it vanished on the next reload.
-  useEffect(() => {
-    if (!hydrated) return;
-    writeCache({ profile, weeks });
-  }, [hydrated, profile, weeks]);
+  const { data: profile = null } = useQuery({
+    queryKey: profileKey,
+    queryFn: () => Promise.resolve(client.getQueryData<EverhourProfile>(profileKey) ?? null),
+    staleTime: Infinity,
+    gcTime: PERSIST_MAX_AGE,
+  });
 
-  const setProfile = useCallback((next: EverhourProfile | null) => {
-    setProfileState(next);
-  }, []);
+  const setProfile = useCallback(
+    (next: EverhourProfile | null) => {
+      client.setQueryData(profileKey, next);
+    },
+    [client],
+  );
 
-  const setWeeks = useCallback((next: ReadonlyArray<WeekRecord>) => {
-    setWeeksState(next);
-  }, []);
+  const setWeeks = useCallback(
+    (next: ReadonlyArray<WeekRecord>) => {
+      client.setQueryData(timesheetKeys.weeks(), next);
+    },
+    [client],
+  );
 
-  const upsertWeek = useCallback((week: WeekRecord) => {
-    setWeeksState((cur) => {
-      const next = [...cur];
-      const idx = next.findIndex((w) => w.week.isoWeek === week.week.isoWeek);
-      if (idx >= 0) next[idx] = week;
-      else next.push(week);
-      return next;
-    });
-  }, []);
+  const upsertWeek = useCallback(
+    (week: WeekRecord) => {
+      client.setQueryData<ReadonlyArray<WeekRecord>>(timesheetKeys.weeks(), (cur) =>
+        upsertInto(cur ?? EMPTY_WEEKS, week),
+      );
+    },
+    [client],
+  );
 
-  const upsertWeeks = useCallback((incoming: ReadonlyArray<WeekRecord>) => {
-    setWeeksState((cur) => {
-      const map = new Map(cur.map((w) => [w.week.isoWeek, w]));
-      for (const w of incoming) map.set(w.week.isoWeek, w);
-      return [...map.values()];
-    });
-  }, []);
+  const upsertWeeks = useCallback(
+    (incoming: ReadonlyArray<WeekRecord>) => {
+      client.setQueryData<ReadonlyArray<WeekRecord>>(timesheetKeys.weeks(), (cur) => {
+        const map = new Map((cur ?? EMPTY_WEEKS).map((w) => [w.week.isoWeek, w]));
+        for (const w of incoming) map.set(w.week.isoWeek, w);
+        return [...map.values()];
+      });
+    },
+    [client],
+  );
 
   const clear = useCallback(() => {
-    setProfileState(null);
-    setWeeksState([]);
-    clearCache();
-  }, []);
+    client.setQueryData(timesheetKeys.weeks(), EMPTY_WEEKS);
+    client.setQueryData(profileKey, null);
+  }, [client]);
 
   const sortedWeeks = useMemo(
     () => [...weeks].sort((a, b) => b.week.from.localeCompare(a.week.from)),
@@ -103,7 +112,7 @@ export function useViewerCache(): ViewerCacheApi {
   const totalSeconds = useMemo(() => weeks.reduce((acc, w) => acc + w.totals.seconds, 0), [weeks]);
 
   return {
-    hydrated,
+    hydrated: !isRestoring,
     profile,
     weeks,
     sortedWeeks,
