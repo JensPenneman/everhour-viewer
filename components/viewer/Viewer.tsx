@@ -1,5 +1,6 @@
 "use client";
 
+import { usePathname, useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   useApiKey,
@@ -11,6 +12,7 @@ import {
 } from "@/hooks";
 import { buildBackupFile, downloadBackup, readBackupFiles } from "@/lib/backup";
 import { toLocalIsoDate } from "@/lib/format";
+import { HOME_HREF, PROFILE_HREF, dayHref, parseRoute, weekHref } from "@/lib/routing";
 import { Header } from "./Header";
 import { IntegrationsDialog } from "./integrations";
 import { KeyDialog } from "./KeyDialog";
@@ -33,10 +35,10 @@ import { DayDetail } from "./day-detail";
  *   - {@link useToasts}        — bottom-right toast queue,
  *   - {@link useDayEvents}     — manual + provider-sourced day events.
  *
- * The `view` state uses `"empty"` as a "let the data decide" sentinel
- * rather than a literal empty screen — once the cache has data the
- * displayed view is derived. This keeps initial hydration free of any
- * setState-in-render, which React 19 forbids.
+ * The active view is derived from the URL (see {@link parseRoute}), so weeks
+ * and day-details are deep-linkable and survive refresh / back-forward;
+ * navigation is `router.push`. While the cache hydrates, the view falls back
+ * to whatever the data can show, keeping hydration free of setState-in-render.
  */
 export function Viewer() {
   const apiKey = useApiKey();
@@ -56,27 +58,22 @@ export function Viewer() {
   } = events;
   const toastsPush = toasts.push;
 
-  const [view, setView] = useState<SidebarView>("empty");
-  const [activeIso, setActiveIso] = useState<string | null>(null);
-  // When set, the dedicated day-detail view is shown for this ISO date
-  // (within the active week). Cleared on week change / back.
-  const [dayDate, setDayDate] = useState<string | null>(null);
   const [menuOpen, setMenuOpen] = useState(false);
   const [keyDialogOpen, setKeyDialogOpen] = useState(false);
   const [integrationsOpen, setIntegrationsOpen] = useState(false);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
 
-  // Derived view: respects an explicit user pick, otherwise auto-selects
-  // based on cache contents. No setState-in-render.
-  const effectiveView: SidebarView = useMemo(() => {
-    if (view !== "empty") return view;
-    if (cache.weeks.length > 0) return "week";
-    if (cache.profile) return "profile";
-    return "empty";
-  }, [view, cache.weeks.length, cache.profile]);
+  // The URL is the source of truth for which view is shown, so weeks and
+  // day-details are deep-linkable and survive refresh / back-forward.
+  const router = useRouter();
+  const pathname = usePathname();
+  const route = useMemo(() => parseRoute(pathname ?? HOME_HREF), [pathname]);
 
-  const effectiveActiveIso = activeIso ?? cache.sortedWeeks[0]?.week.isoWeek ?? null;
+  // Which week is active: explicit from the URL, else the latest synced week.
+  const routeIso = route.view === "week" ? route.isoWeek : null;
+  const effectiveActiveIso = routeIso ?? cache.sortedWeeks[0]?.week.isoWeek ?? null;
   const activeWeek = cache.sortedWeeks.find((w) => w.week.isoWeek === effectiveActiveIso) ?? null;
+  const dayDate = route.view === "week" ? route.date : null;
   const activeDay = useMemo(
     () =>
       dayDate && activeWeek
@@ -84,6 +81,15 @@ export function Viewer() {
         : null,
     [dayDate, activeWeek],
   );
+
+  // Map the URL onto a sidebar view, falling back to whatever the cache can
+  // show while it hydrates (no setState-in-render).
+  const effectiveView: SidebarView = useMemo(() => {
+    if (route.view === "profile" && cache.profile) return "profile";
+    if (cache.weeks.length > 0) return "week";
+    if (cache.profile) return "profile";
+    return "empty";
+  }, [route.view, cache.weeks.length, cache.profile]);
 
   // Keep the holiday / ICS provider window aligned with the data we
   // have on screen. Re-runs only when the underlying weeks change.
@@ -112,15 +118,16 @@ export function Viewer() {
 
   useKeyboardNav({
     enabled: effectiveView === "week" && dayDate === null && cache.sortedWeeks.length > 0,
+    // `replace` so rapid arrow-stepping doesn't flood the history stack.
     onPrev: () => {
       const idx = cache.sortedWeeks.findIndex((w) => w.week.isoWeek === effectiveActiveIso);
       const next = cache.sortedWeeks[Math.max(0, idx - 1)];
-      if (next) setActiveIso(next.week.isoWeek);
+      if (next) router.replace(weekHref(next.week.isoWeek));
     },
     onNext: () => {
       const idx = cache.sortedWeeks.findIndex((w) => w.week.isoWeek === effectiveActiveIso);
       const next = cache.sortedWeeks[Math.min(cache.sortedWeeks.length - 1, idx + 1)];
-      if (next) setActiveIso(next.week.isoWeek);
+      if (next) router.replace(weekHref(next.week.isoWeek));
     },
   });
 
@@ -130,7 +137,6 @@ export function Viewer() {
         setKeyDialogOpen(true);
         return;
       }
-      let firstWeekSeen = cache.weeks.length > 0;
 
       await sync.run({
         apiKey: apiKey.readUserKey(),
@@ -141,14 +147,9 @@ export function Viewer() {
           schemaVersion: w.schemaVersion,
         })),
         onProfile: (profile) => cache.setProfile(profile),
-        onWeek: (week) => {
-          cache.upsertWeek(week);
-          if (!firstWeekSeen) {
-            firstWeekSeen = true;
-            setActiveIso(week.week.isoWeek);
-            setView("week");
-          }
-        },
+        // The home view auto-shows the latest week as weeks stream in, so no
+        // navigation is needed here; an explicit week URL is left untouched.
+        onWeek: (week) => cache.upsertWeek(week),
         onDone: (counts) => {
           toastsPush(
             `Sync klaar — ${counts.new} nieuw · ${counts.updated} bijgewerkt · ${counts.skipped} ongewijzigd`,
@@ -186,10 +187,9 @@ export function Viewer() {
     setMenuOpen(false);
     if (!confirm("Lokale gegevens wissen? Je API-sleutel blijft bewaard.")) return;
     cache.clear();
-    setActiveIso(null);
-    setView("empty");
+    router.push(HOME_HREF);
     toastsPush("Cache gewist", "good");
-  }, [cache, toastsPush]);
+  }, [cache, router, toastsPush]);
 
   const onLoadFiles = useCallback(
     async (files: FileList) => {
@@ -197,14 +197,11 @@ export function Viewer() {
       if (!loaded.hasWeeks && !loaded.hasProfile) return;
       if (loaded.hasProfile) cache.setProfile(loaded.profile);
       if (loaded.hasWeeks) cache.upsertWeeks(loaded.weeks);
-      if (loaded.hasWeeks && activeIso === null) {
+      if (loaded.hasWeeks) {
         const next = [...loaded.weeks].sort((a, b) => b.week.from.localeCompare(a.week.from))[0];
-        if (next) {
-          setActiveIso(next.week.isoWeek);
-          setView("week");
-        }
-      } else if (loaded.hasProfile && !loaded.hasWeeks) {
-        setView("profile");
+        if (next) router.push(weekHref(next.week.isoWeek));
+      } else if (loaded.hasProfile) {
+        router.push(PROFILE_HREF);
       }
       const parts: string[] = [];
       if (loaded.hasProfile) parts.push("profiel");
@@ -213,7 +210,7 @@ export function Viewer() {
       }
       toastsPush(`Geladen: ${parts.join(" + ")}`, "good");
     },
-    [cache, activeIso, toastsPush],
+    [cache, router, toastsPush],
   );
 
   const onSubmitKey = useCallback(
@@ -273,15 +270,8 @@ export function Viewer() {
           weeks={cache.sortedWeeks}
           activeIso={effectiveActiveIso}
           view={effectiveView}
-          onSelectWeek={(iso) => {
-            setActiveIso(iso);
-            setDayDate(null);
-            setView("week");
-          }}
-          onSelectProfile={() => {
-            setDayDate(null);
-            setView("profile");
-          }}
+          onSelectWeek={(iso) => router.push(weekHref(iso))}
+          onSelectProfile={() => router.push(PROFILE_HREF)}
         />
 
         <main className="flex-1 overflow-y-auto px-9 py-7">
@@ -302,7 +292,7 @@ export function Viewer() {
                 day={activeDay}
                 events={eventsForDate?.(dayDate)}
                 tzOffsetHours={cache.profile?.timezone ?? null}
-                onBack={() => setDayDate(null)}
+                onBack={() => router.push(weekHref(activeWeek.week.isoWeek))}
               />
             ) : (
               <WeekDetail
@@ -310,7 +300,7 @@ export function Viewer() {
                 eventsForDate={eventsForDate}
                 onAddEvent={onAddEvent}
                 onRemoveEvent={onRemoveEvent}
-                onOpenDay={setDayDate}
+                onOpenDay={(date) => router.push(dayHref(activeWeek.week.isoWeek, date))}
               />
             )
           ) : (
