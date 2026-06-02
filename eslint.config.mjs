@@ -20,6 +20,10 @@ const eslintConfig = defineConfig([
       // React
       "react/no-unescaped-entities": "off",
       "react/jsx-curly-brace-presence": ["error", { props: "never", children: "never" }],
+      // We don't use the React Compiler; this rule only flags libraries whose
+      // hooks return non-memoizable handles (e.g. TanStack Table's useReactTable),
+      // which is by-design and safe here.
+      "react-hooks/incompatible-library": "off",
 
       // Imports
       "import/order": "off",

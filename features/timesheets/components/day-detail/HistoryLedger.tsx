@@ -1,3 +1,7 @@
+"use client";
+
+import { useMemo } from "react";
+import { type ColumnDef, flexRender, getCoreRowModel, useReactTable } from "@tanstack/react-table";
 import type { TimeEdit, WeekEntry } from "@/lib/everhour";
 import { fmtDuration, fmtLocalTime, fmtSignedDuration } from "@/lib/format";
 import { isForeignActor, resolveActorLabel } from "./day-audit";
@@ -16,24 +20,112 @@ const ACTION_META: Record<TimeEdit["action"], { icon: string; label: string }> =
 
 const ACTION_ORDER: Record<TimeEdit["action"], number> = { TIMER: 0, EDIT: 1, COMMENT: 2 };
 
+const TD_CLASS: Record<string, string> = {
+  tijd: "tabular-nums text-muted whitespace-nowrap",
+  actie: "whitespace-nowrap",
+  delta: "text-right tabular-nums font-medium",
+  cumulatief: "text-right tabular-nums text-muted",
+  door: "whitespace-nowrap",
+  opmerking: "text-foreground",
+};
+const TH_CLASS: Record<string, string> = { delta: "text-right", cumulatief: "text-right" };
+
 /**
  * The full audit trail for one entry: timer runs, manual corrections, and
- * comments in chronological order, with the running cumulative taken
- * straight from the data (`previousSeconds + deltaSeconds`) rather than a
- * re-sum — time moved in from another task breaks naive sums.
+ * comments in chronological order, with the running cumulative taken straight
+ * from the data (`previousSeconds + deltaSeconds`) rather than a re-sum — time
+ * moved in from another task breaks naive sums.
+ *
+ * Built with TanStack Table for the row/column model; the order is a fixed
+ * multi-key sort (time → action → original index), so no interactive sorting.
  */
 export function HistoryLedger({ entry, ownerId, tzOffsetHours }: HistoryLedgerProps) {
-  const history = [...(entry.history ?? [])]
-    .map((h, i) => ({ h, i }))
-    .sort(
-      (a, b) =>
-        a.h.at.localeCompare(b.h.at) ||
-        ACTION_ORDER[a.h.action] - ACTION_ORDER[b.h.action] ||
-        a.i - b.i,
-    )
-    .map(({ h }) => h);
+  const data = useMemo(
+    () =>
+      [...(entry.history ?? [])]
+        .map((h, i) => ({ h, i }))
+        .sort(
+          (a, b) =>
+            a.h.at.localeCompare(b.h.at) ||
+            ACTION_ORDER[a.h.action] - ACTION_ORDER[b.h.action] ||
+            a.i - b.i,
+        )
+        .map(({ h }) => h),
+    [entry.history],
+  );
 
-  if (history.length === 0) {
+  const columns = useMemo<ColumnDef<TimeEdit>[]>(
+    () => [
+      {
+        id: "tijd",
+        header: "Tijd",
+        cell: ({ row }) => fmtLocalTime(row.original.at, tzOffsetHours) || "—",
+      },
+      {
+        id: "actie",
+        header: "Actie",
+        cell: ({ row }) => {
+          const meta = ACTION_META[row.original.action];
+          return (
+            <>
+              <span aria-hidden="true">{meta.icon}</span> {meta.label}
+            </>
+          );
+        },
+      },
+      {
+        id: "delta",
+        header: "Δ",
+        cell: ({ row }) => {
+          const h = row.original;
+          if (h.action === "COMMENT") return <span className="text-muted">—</span>;
+          const color =
+            h.action === "EDIT"
+              ? isForeignActor(h.by, ownerId)
+                ? h.deltaSeconds < 0
+                  ? "text-bad"
+                  : "text-warn"
+                : "text-accent"
+              : "text-muted";
+          return <span className={color}>{fmtSignedDuration(h.deltaSeconds)}</span>;
+        },
+      },
+      {
+        id: "cumulatief",
+        header: "Cumulatief",
+        cell: ({ row }) =>
+          `→ ${fmtDuration(row.original.previousSeconds + row.original.deltaSeconds)}`,
+      },
+      {
+        id: "door",
+        header: "Door",
+        cell: ({ row }) => {
+          const h = row.original;
+          const foreign = isForeignActor(h.by, ownerId);
+          const foreignReduction = foreign && h.action === "EDIT" && h.deltaSeconds < 0;
+          const color = foreignReduction
+            ? "text-bad font-medium"
+            : foreign
+              ? "text-warn font-medium"
+              : "text-muted";
+          return (
+            <span className={color}>{foreign ? resolveActorLabel(h.byName, h.by) : "Jij"}</span>
+          );
+        },
+      },
+      {
+        id: "opmerking",
+        header: "Opmerking",
+        cell: ({ row }) =>
+          row.original.action === "COMMENT" && entry.comment ? `“${entry.comment}”` : "",
+      },
+    ],
+    [ownerId, tzOffsetHours, entry.comment],
+  );
+
+  const table = useReactTable({ data, columns, getCoreRowModel: getCoreRowModel() });
+
+  if (data.length === 0) {
     return (
       <div className="text-[12px] text-muted-soft italic py-1">
         Geen wijzigingsgeschiedenis beschikbaar
@@ -45,60 +137,36 @@ export function HistoryLedger({ entry, ownerId, tzOffsetHours }: HistoryLedgerPr
     <div className="rounded-lg border border-border bg-[#fafbfc] overflow-hidden">
       <table className="w-full border-collapse text-[12px]">
         <thead>
-          <tr className="text-muted">
-            <Th>Tijd</Th>
-            <Th>Actie</Th>
-            <Th className="text-right">Δ</Th>
-            <Th className="text-right">Cumulatief</Th>
-            <Th>Door</Th>
-            <Th>Opmerking</Th>
-          </tr>
+          {table.getHeaderGroups().map((hg) => (
+            <tr key={hg.id} className="text-muted">
+              {hg.headers.map((header) => (
+                <th
+                  key={header.id}
+                  className={`px-3 py-1.5 text-left font-medium text-[10.5px] uppercase tracking-wider ${TH_CLASS[header.column.id] ?? ""}`}
+                >
+                  {flexRender(header.column.columnDef.header, header.getContext())}
+                </th>
+              ))}
+            </tr>
+          ))}
         </thead>
         <tbody>
-          {history.map((h, idx) => {
-            const meta = ACTION_META[h.action];
+          {table.getRowModel().rows.map((row) => {
+            const h = row.original;
             const foreign = isForeignActor(h.by, ownerId);
-            const isComment = h.action === "COMMENT";
-            const cumulative = h.previousSeconds + h.deltaSeconds;
-            // Red is reserved for a foreign REDUCTION; a foreign addition or
-            // a foreign comment/timer is amber, an owner edit is accent.
             const foreignReduction = foreign && h.action === "EDIT" && h.deltaSeconds < 0;
-            const deltaColor =
-              h.action === "EDIT"
-                ? foreign
-                  ? h.deltaSeconds < 0
-                    ? "text-bad"
-                    : "text-warn"
-                  : "text-accent"
-                : "text-muted";
             const rowBg = foreignReduction
               ? "bg-bad-bg"
-              : foreign && !isComment
+              : foreign && h.action !== "COMMENT"
                 ? "bg-warn-bg"
                 : "";
-            const actorColor = foreignReduction
-              ? "text-bad font-medium"
-              : foreign
-                ? "text-warn font-medium"
-                : "text-muted";
             return (
-              <tr key={idx} className={`border-t border-border ${rowBg}`}>
-                <Td className="tabular-nums text-muted whitespace-nowrap">
-                  {fmtLocalTime(h.at, tzOffsetHours) || "—"}
-                </Td>
-                <Td className="whitespace-nowrap">
-                  <span aria-hidden="true">{meta.icon}</span> {meta.label}
-                </Td>
-                <Td className={`text-right tabular-nums font-medium ${deltaColor}`}>
-                  {isComment ? "—" : fmtSignedDuration(h.deltaSeconds)}
-                </Td>
-                <Td className="text-right tabular-nums text-muted">→ {fmtDuration(cumulative)}</Td>
-                <Td className={`whitespace-nowrap ${actorColor}`}>
-                  {foreign ? resolveActorLabel(h.byName, h.by) : "Jij"}
-                </Td>
-                <Td className="text-foreground">
-                  {isComment && entry.comment ? `“${entry.comment}”` : ""}
-                </Td>
+              <tr key={row.id} className={`border-t border-border ${rowBg}`}>
+                {row.getVisibleCells().map((cell) => (
+                  <td key={cell.id} className={`px-3 py-1.5 ${TD_CLASS[cell.column.id] ?? ""}`}>
+                    {flexRender(cell.column.columnDef.cell, cell.getContext())}
+                  </td>
+                ))}
               </tr>
             );
           })}
@@ -106,18 +174,4 @@ export function HistoryLedger({ entry, ownerId, tzOffsetHours }: HistoryLedgerPr
       </table>
     </div>
   );
-}
-
-function Th({ children, className = "" }: { children: React.ReactNode; className?: string }) {
-  return (
-    <th
-      className={`px-3 py-1.5 text-left font-medium text-[10.5px] uppercase tracking-wider ${className}`}
-    >
-      {children}
-    </th>
-  );
-}
-
-function Td({ children, className = "" }: { children: React.ReactNode; className?: string }) {
-  return <td className={`px-3 py-1.5 ${className}`}>{children}</td>;
 }
