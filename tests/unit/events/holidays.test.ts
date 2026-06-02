@@ -38,4 +38,21 @@ describe("holidaysInRange (BE / nl)", () => {
     expect(holidaysInRange("not-a-date", "2026-01-01", { country: "BE" })).toEqual([]);
     expect(holidaysInRange("2026-01-01", "also-not-a-date", { country: "BE" })).toEqual([]);
   });
+
+  it("returns the ten Belgian public holidays for a full year", () => {
+    const events = holidaysInRange("2026-01-01", "2026-12-31", { country: "BE", language: "nl" });
+    expect(events).toHaveLength(10);
+  });
+
+  it("computes the Easter-relative holidays (2026: Easter is 5 Apr)", () => {
+    const events = holidaysInRange("2026-01-01", "2026-12-31", { country: "BE", language: "nl" });
+    const dates = new Set(events.map((e) => e.date));
+    expect(dates.has("2026-04-06")).toBe(true); // Paasmaandag (Easter + 1)
+    expect(dates.has("2026-05-14")).toBe(true); // O.L.H.-Hemelvaart (Easter + 39)
+    expect(dates.has("2026-05-25")).toBe(true); // Pinkstermaandag (Easter + 50)
+  });
+
+  it("ignores non-Belgian country codes", () => {
+    expect(holidaysInRange("2026-01-01", "2026-12-31", { country: "NL" })).toEqual([]);
+  });
 });

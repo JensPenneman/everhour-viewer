@@ -4,8 +4,8 @@ import type { Provider } from "./types";
 /**
  * Belgian public-holiday provider.
  *
- * Always-on, no credentials. Backed by `lib/events/holidays.ts` which
- * wraps the `date-holidays` package; this file is the provider-shaped
+ * Always-on, no credentials. Backed by `lib/events/holidays.ts`, which
+ * computes Belgium's holidays directly; this file is the provider-shaped
  * adapter.
  */
 export const belgianHolidaysProvider: Provider = {

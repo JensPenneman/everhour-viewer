@@ -8,7 +8,7 @@
  *
  * Events have a `source` so the UI can distinguish:
  *   - `manual`        — user-created in this browser (editable),
- *   - `holidays:<cc>` — public holidays from the date-holidays library,
+ *   - `holidays:<cc>` — computed public holidays (currently Belgium),
  *   - future          — third-party providers (`officient`, `ms365`,
  *                       `linear`, …) once the provider abstraction lands.
  */
