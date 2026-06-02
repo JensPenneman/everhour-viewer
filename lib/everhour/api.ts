@@ -1,7 +1,17 @@
 import "server-only";
 import { everhourFetch } from "./client";
 import { sanitizeProfile } from "./transforms";
-import type { EverhourProfile, MemberMap, RawEntry, RawTeamMember, RawTimesheet } from "./types";
+import type {
+  ClockStatus,
+  EverhourProfile,
+  LiveEntry,
+  MemberMap,
+  RawEntry,
+  RawTeamMember,
+  RawTimesheet,
+  TaskHit,
+  Timer,
+} from "./types";
 
 /**
  * High-level Everhour operations layered on top of {@link everhourFetch}.
@@ -78,4 +88,152 @@ export function fetchWeekEntries(opts: FetchWeekEntriesOptions): Promise<Readonl
     signal: opts.signal,
     params: { from: opts.from, to: opts.to },
   });
+}
+
+/* ────────────────────────────────────────────────────────────────────────── */
+/* Live tracking — timers, task search, clock, today/week time.              */
+/* ────────────────────────────────────────────────────────────────────────── */
+
+interface RawTaskish {
+  readonly id?: string;
+  readonly name?: string;
+  readonly number?: string | null;
+  readonly url?: string | null;
+  readonly status?: string | null;
+}
+
+interface RawTimer {
+  readonly status?: string;
+  readonly duration?: number;
+  readonly startedAt?: string | null;
+  readonly task?: RawTaskish | null;
+}
+
+function sanitizeTask(t: RawTaskish | null | undefined): TaskHit | null {
+  if (!t?.id) return null;
+  return {
+    id: t.id,
+    name: t.name ?? "",
+    linearKey: t.number ?? null,
+    url: t.url ?? null,
+    status: t.status ?? null,
+  };
+}
+
+function sanitizeTimer(raw: RawTimer | null | undefined): Timer {
+  const running = raw?.status === "active";
+  return {
+    running,
+    durationSeconds: typeof raw?.duration === "number" ? raw.duration : 0,
+    startedAt: raw?.startedAt ?? null,
+    task: running ? sanitizeTask(raw?.task) : null,
+  };
+}
+
+/** The current timer (`running: false` when none is active). */
+export async function getCurrentTimer(key: string, signal?: AbortSignal): Promise<Timer> {
+  const raw = await everhourFetch<RawTimer>("/timers/current", { key, signal });
+  return sanitizeTimer(raw);
+}
+
+/**
+ * Start a timer on a task, then confirm by re-reading the current timer —
+ * so the result shape is consistent regardless of what `POST /timers`
+ * echoes back. The write itself is single-attempt (see {@link everhourFetch}).
+ */
+export async function startTimer(
+  key: string,
+  taskId: string,
+  signal?: AbortSignal,
+): Promise<Timer> {
+  await everhourFetch<RawTimer>("/timers", { key, method: "POST", body: { task: taskId }, signal });
+  return getCurrentTimer(key, signal);
+}
+
+/** Stop the running timer; returns the now-idle timer state. */
+export async function stopTimer(key: string, signal?: AbortSignal): Promise<Timer> {
+  await everhourFetch<RawTimer>("/timers/current", { key, method: "DELETE", signal });
+  return getCurrentTimer(key, signal);
+}
+
+/** Search tasks to start a timer on. */
+export async function searchTasks(
+  key: string,
+  query: string,
+  signal?: AbortSignal,
+): Promise<ReadonlyArray<TaskHit>> {
+  const raw = await everhourFetch<RawTaskish[]>("/tasks/search", {
+    key,
+    signal,
+    params: { query, limit: 25 },
+  });
+  return (raw ?? []).map(sanitizeTask).filter((t): t is TaskHit => t !== null);
+}
+
+interface RawClockCard {
+  readonly user?: number;
+  readonly date?: string;
+  readonly clockIn?: string | null;
+  readonly clockOut?: string | null;
+}
+
+/** Today's attendance clock status for the user. */
+export async function getClockToday(
+  key: string,
+  userId: number,
+  today: string,
+  signal?: AbortSignal,
+): Promise<ClockStatus> {
+  const raw = await everhourFetch<RawClockCard[]>("/timecards", {
+    key,
+    signal,
+    params: { from: today, to: today, limit: 200 },
+  });
+  const card = (raw ?? []).find((c) => c.user === userId && c.date === today);
+  return {
+    date: today,
+    clockedIn: !!card?.clockIn && !card?.clockOut,
+    clockIn: card?.clockIn ?? null,
+    clockOut: card?.clockOut ?? null,
+  };
+}
+
+/**
+ * Manual clock in/out. These write endpoints are best-effort — clock-in
+ * already fires automatically when a timer starts, and not every account
+ * exposes manual control — so callers should tolerate a 4xx and fall back to
+ * showing status only.
+ */
+export async function clockInOut(
+  key: string,
+  action: "in" | "out",
+  signal?: AbortSignal,
+): Promise<void> {
+  await everhourFetch<unknown>(`/timecards/clock-${action}`, { key, method: "POST", signal });
+}
+
+/** Committed time entries in `[from, to]`, trimmed for live day/week totals. */
+export async function fetchTimeRange(
+  key: string,
+  userId: number,
+  from: string,
+  to: string,
+  signal?: AbortSignal,
+): Promise<ReadonlyArray<LiveEntry>> {
+  const raw = await everhourFetch<RawEntry[]>(`/users/${userId}/time`, {
+    key,
+    signal,
+    params: { from, to },
+  });
+  return (raw ?? []).map((e) => ({
+    date: e.date,
+    seconds: e.time,
+    task: sanitizeTask(e.task) ?? {
+      id: "",
+      name: e.task?.name ?? "",
+      linearKey: null,
+      url: null,
+      status: null,
+    },
+  }));
 }

@@ -10,21 +10,37 @@
 export { EverhourError } from "./errors";
 export { isoWeekLabel } from "./iso-week";
 export { sanitizeProfile, buildWeek } from "./transforms";
-export { fetchProfile, fetchTeamMembers, fetchTimesheetList, fetchWeekEntries } from "./api";
+export {
+  fetchProfile,
+  fetchTeamMembers,
+  fetchTimesheetList,
+  fetchWeekEntries,
+  getCurrentTimer,
+  startTimer,
+  stopTimer,
+  searchTasks,
+  getClockToday,
+  clockInOut,
+  fetchTimeRange,
+} from "./api";
 export { WEEK_SCHEMA_VERSION } from "./types";
 export type {
   ApprovalStatus,
   ApprovalEvent,
   BackupFile,
   ClockEvent,
+  ClockStatus,
   EverhourProfile,
+  LiveEntry,
   MemberMap,
   RawEntry,
   RawTeamMember,
   RawTimecard,
   RawTimesheet,
+  TaskHit,
   TimeEdit,
   TimeEditAction,
+  Timer,
   WeekDay,
   WeekEntry,
   WeekRecord,

@@ -5,19 +5,28 @@ const API_BASE = "https://api.everhour.com";
 const DEFAULT_RETRY_ATTEMPTS = 3;
 const DEFAULT_RETRY_DELAY_MS = 400;
 
+export type HttpMethod = "GET" | "POST" | "PUT" | "DELETE";
+
 export interface FetchOptions {
   readonly key: string;
+  readonly method?: HttpMethod;
+  /** JSON request body for write methods. */
+  readonly body?: unknown;
   readonly params?: Readonly<Record<string, string | number>>;
   readonly signal?: AbortSignal;
   readonly retries?: number;
 }
 
 /**
- * Low-level GET against the Everhour REST API.
+ * Low-level request against the Everhour REST API.
  *
- * - Retries transient failures (network, 429, 5xx) with linear back-off.
- * - Surfaces 4xx errors immediately as {@link EverhourError} so callers can
- *   branch on auth/quota errors without paying for retries.
+ * - **GET** retries transient failures (network, 429, 5xx) with linear
+ *   back-off, since reads are idempotent.
+ * - **Writes** (POST/PUT/DELETE) default to a **single attempt** — retrying a
+ *   `POST /timers` could double-start a timer — and surface the failure
+ *   instead. Pass `retries` explicitly to override either default.
+ * - 4xx errors surface immediately as {@link EverhourError} so callers can
+ *   branch on auth/quota errors.
  *
  * Callers should layer their own domain operations on top of this rather
  * than calling it directly from UI code — see `lib/everhour/api.ts`.
@@ -30,7 +39,9 @@ export async function everhourFetch<T>(path: string, opts: FetchOptions): Promis
     }
   }
 
-  const attempts = opts.retries ?? DEFAULT_RETRY_ATTEMPTS;
+  const method = opts.method ?? "GET";
+  const isWrite = method !== "GET";
+  const attempts = opts.retries ?? (isWrite ? 1 : DEFAULT_RETRY_ATTEMPTS);
   let lastError: unknown;
 
   for (let attempt = 0; attempt < attempts; attempt++) {
@@ -40,13 +51,21 @@ export async function everhourFetch<T>(path: string, opts: FetchOptions): Promis
 
     try {
       const resp = await fetch(url, {
-        headers: { "X-Api-Key": opts.key },
+        method,
+        headers: {
+          "X-Api-Key": opts.key,
+          ...(opts.body !== undefined ? { "Content-Type": "application/json" } : {}),
+        },
+        body: opts.body !== undefined ? JSON.stringify(opts.body) : undefined,
         cache: "no-store",
         signal: opts.signal,
       });
 
       if (resp.ok) {
-        return (await resp.json()) as T;
+        // Some writes (e.g. DELETE) return 204 / an empty body.
+        if (resp.status === 204) return undefined as T;
+        const text = await resp.text();
+        return (text ? JSON.parse(text) : undefined) as T;
       }
 
       const body = await resp.text().catch(() => "");

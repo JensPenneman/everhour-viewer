@@ -229,3 +229,48 @@ export interface RawTeamMember {
 
 /** Resolved id → display name for actors in edit/clock history. */
 export type MemberMap = ReadonlyMap<number, string>;
+
+/* ────────────────────────────────────────────────────────────────────────── */
+/* Live tracking — the active-use ("Vandaag") surface.                       */
+/* ────────────────────────────────────────────────────────────────────────── */
+
+/** A task a timer can run on (search hit, or the running timer's task). */
+export interface TaskHit {
+  readonly id: string;
+  readonly name: string;
+  /** Everhour `task.number`, e.g. a Linear key "LS-510". */
+  readonly linearKey: string | null;
+  readonly url: string | null;
+  readonly status: string | null;
+}
+
+/**
+ * The current timer, sanitised from `/timers/current`.
+ *
+ * `running` is false when no timer is active. `durationSeconds` is the
+ * server-reported elapsed at fetch time; the UI ticks locally on top of it.
+ * `startedAt` is the raw UTC timestamp (`YYYY-MM-DD HH:MM:SS`).
+ */
+export interface Timer {
+  readonly running: boolean;
+  readonly durationSeconds: number;
+  readonly startedAt: string | null;
+  readonly task: TaskHit | null;
+}
+
+/** Today's attendance clock, sanitised from `/timecards`. */
+export interface ClockStatus {
+  readonly date: string;
+  readonly clockedIn: boolean;
+  /** Local `"HH:MM"` of clock-in, or null if not clocked in today. */
+  readonly clockIn: string | null;
+  /** Local `"HH:MM"` of clock-out, or null while still clocked in. */
+  readonly clockOut: string | null;
+}
+
+/** One committed time entry, trimmed for the live day/week totals. */
+export interface LiveEntry {
+  readonly date: string;
+  readonly seconds: number;
+  readonly task: TaskHit;
+}
