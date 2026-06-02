@@ -78,42 +78,52 @@ only. Pre-push runs `typecheck` + `test`.
 
 ## Project layout
 
+The frontend is organised into **feature modules**; cross-cutting code lives
+in `shared/` and the framework-agnostic kernel in `lib/`. The backend is
+three layers (data → service → route). An ESLint rule keeps the dependency
+graph one-directional: the kernel never imports features, and `server/` never
+imports client code.
+
 ```
 everhour-viewer/
-├── app/                            # Next.js App Router
-│   ├── api/sync/route.ts           # Thin adapter → server/sync/orchestrator
-│   ├── globals.css
-│   ├── layout.tsx
-│   └── page.tsx                    # Renders <Viewer />
-├── components/
-│   ├── ui/                         # Generic primitives (Button, Dialog, Menu, …)
-│   └── viewer/                     # App-specific components
-│       └── week-detail/            # KPI cards, daily chart, task table, day breakdown
-├── hooks/                          # Custom React hooks
-│   ├── useApiKey.ts
-│   ├── useKeyboardNav.ts
-│   ├── useStreamingSync.ts
-│   ├── useToasts.ts
-│   └── useViewerCache.ts
-├── lib/                            # Framework-agnostic, pure logic
-│   ├── everhour/                   # Domain types, HTTP client, transforms, errors
-│   ├── format/                     # Dates, times, Dutch i18n
-│   ├── storage/                    # Typed localStorage wrappers
-│   ├── streaming/                  # NDJSON reader/writer
-│   └── backup.ts                   # Backup serialisation + file import
-├── server/                         # Server-only code (import "server-only")
-│   └── sync/                       # Delta plan + streaming orchestrator + zod schemas
-├── scripts/                        # Dev scripts (e.g. screenshot driver)
-├── tests/
-│   ├── unit/                       # Vitest, Node env
-│   ├── e2e/                        # Playwright, Chromium
-│   └── stubs/                      # `server-only` shim for unit tests
-├── docs/
-│   └── architecture.md             # System design + sync protocol
-├── playwright.config.ts
-├── vitest.config.ts
-└── package.json
+├── app/                          # Next.js App Router
+│   ├── api/{sync,timer,tasks,    # thin routes: resolveKey → zod validate
+│   │        clock,time}/route.ts #            → service → respond
+│   ├── providers.tsx             # TanStack Query client + localStorage persistence
+│   ├── layout.tsx                # mounts <AppProviders><Viewer/></AppProviders>
+│   └── [[...slug]]/page.tsx      # renders null; the URL alone drives the view
+├── features/                     # feature modules (components/ hooks/ [lib/] index.ts)
+│   ├── live/                     # Vandaag — timers, clock, day/week targets
+│   ├── timesheets/               # the viewer — week + day-detail, edit audit, cache store
+│   ├── sync/                     # streaming NDJSON sync + backup import/export
+│   └── events/                   # day-event overlay UI + hook (holidays / ICS)
+├── shared/
+│   ├── ui/                       # design-system primitives (Button, Dialog, …)
+│   ├── hooks/                    # cross-cutting hooks (apiKey, toasts, nav, transitions)
+│   └── components/               # the app shell (Viewer, Header, Sidebar, …)
+├── lib/                          # shared kernel (framework-agnostic)
+│   ├── everhour/                 # domain types, errors, iso-week, transforms
+│   ├── format/                   # dates/times (date-fns), Dutch i18n
+│   ├── query/                    # TanStack Query client, persister, keys, fetcher
+│   ├── storage/                  # typed localStorage (api key, day events)
+│   ├── events/ · providers/      # day-event domain + provider registry
+│   ├── streaming/                # NDJSON reader/writer
+│   ├── json.ts · errors.ts       # JsonValue, error guards
+│   └── sync-protocol.ts          # NDJSON wire-event types (client/server contract)
+├── server/                       # server-only (import "server-only")
+│   ├── everhour/                 # DATA layer: HTTP client + Everhour ops
+│   ├── services/                 # BUSINESS layer: timer / tasks / clock / time
+│   ├── validation/               # zod request schemas
+│   ├── sync/                     # delta plan + streaming orchestrator
+│   └── http.ts                   # route kit (resolveKey, error mapping)
+├── tests/ {unit, e2e, stubs}
+├── docs/architecture.md          # system design + sync protocol
+└── playwright.config.ts · vitest.config.ts · package.json
 ```
+
+State + server I/O flow through **TanStack Query** (the cache is persisted to
+`localStorage`, so weeks browse offline); the three real tables use
+**TanStack Table**; dates go through **date-fns**.
 
 See [`docs/architecture.md`](docs/architecture.md) for a deeper walk-through
 of the sync protocol, error model, and state flow.
@@ -123,9 +133,9 @@ of the sync protocol, error model, and state flow.
 ```
                        browser tab
                        ┌────────────────────────────────────────────┐
-                       │ Viewer  ←  useViewerCache  ←  localStorage │
-                       │   ↑                                         │
-                       │ useStreamingSync                            │
+                       │ Viewer ← useViewerCache ← TanStack Query    │
+                       │   ↑                         ↕ persisted      │
+                       │ useStreamingSync          localStorage       │
                        └──────┬──────────────────────────────────────┘
                               │ POST /api/sync   ──knownWeeks──▶
                               │   x-everhour-key
