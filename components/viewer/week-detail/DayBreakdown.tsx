@@ -1,22 +1,30 @@
 "use client";
 
+import { Button } from "@/components/ui";
 import type { DayEvent, DayEventKind } from "@/lib/events";
 import type { WeekDay } from "@/lib/everhour";
 import { capitalize, fmtDateFull, fmtHours, nlWeekday, parseLocalDate } from "@/lib/format";
 import { AddEventControl, EventChip } from "../day-event";
+import { CorrectionPill, buildChangeLog, foreignCorrectionCount } from "../day-detail";
 
 export interface DayBreakdownProps {
   readonly days: ReadonlyArray<WeekDay>;
+  /** Timesheet owner id — used to flag corrections made by someone else. */
+  readonly ownerId: number;
   readonly eventsForDate?: (isoDate: string) => ReadonlyArray<DayEvent>;
   readonly onAddEvent?: (date: string, kind: DayEventKind) => void;
   readonly onRemoveEvent?: (id: string) => void;
+  /** Open the dedicated day-detail view for a date. */
+  readonly onOpenDay?: (date: string) => void;
 }
 
 export function DayBreakdown({
   days,
+  ownerId,
   eventsForDate,
   onAddEvent,
   onRemoveEvent,
+  onOpenDay,
 }: DayBreakdownProps) {
   return (
     <div className="flex flex-col gap-1.5 mb-4">
@@ -24,9 +32,11 @@ export function DayBreakdown({
         <DayRow
           key={d.date}
           day={d}
+          ownerId={ownerId}
           events={eventsForDate?.(d.date) ?? []}
           onAddEvent={onAddEvent}
           onRemoveEvent={onRemoveEvent}
+          onOpenDay={onOpenDay}
         />
       ))}
     </div>
@@ -35,13 +45,18 @@ export function DayBreakdown({
 
 interface DayRowProps {
   readonly day: WeekDay;
+  readonly ownerId: number;
   readonly events: ReadonlyArray<DayEvent>;
   readonly onAddEvent?: (date: string, kind: DayEventKind) => void;
   readonly onRemoveEvent?: (id: string) => void;
+  readonly onOpenDay?: (date: string) => void;
 }
 
-function DayRow({ day, events, onAddEvent, onRemoveEvent }: DayRowProps) {
+function DayRow({ day, ownerId, events, onAddEvent, onRemoveEvent, onOpenDay }: DayRowProps) {
   const clock = day.clockIn ? `${day.clockIn} – ${day.clockOut || "(open)"}` : "";
+  // Count foreign change-rows (matches the day-detail header), not entries,
+  // so navigating list → detail never shows a different number.
+  const foreignCount = foreignCorrectionCount(buildChangeLog(day, ownerId));
 
   return (
     <details className="bg-panel border border-border rounded-xl px-4 py-2.5 group">
@@ -71,7 +86,26 @@ function DayRow({ day, events, onAddEvent, onRemoveEvent }: DayRowProps) {
         ) : (
           <span className="text-muted flex-1 text-[12px] tabular-nums">{clock}</span>
         )}
+        {foreignCount > 0 ? (
+          <CorrectionPill title="Iemand anders heeft je tijd op deze dag gewijzigd">
+            ⚠ {foreignCount}
+          </CorrectionPill>
+        ) : null}
         <span className="tabular-nums font-medium text-[13px]">{fmtHours(day.totalSeconds)}u</span>
+        {onOpenDay ? (
+          <Button
+            variant="ghost"
+            size="sm"
+            className="text-accent shrink-0"
+            onClick={(e) => {
+              e.preventDefault();
+              e.stopPropagation();
+              onOpenDay(day.date);
+            }}
+          >
+            Dagdetail →
+          </Button>
+        ) : null}
       </summary>
       <div className="mt-2.5 pl-6 border-t border-border pt-2.5">
         {events.length > 0 ? (

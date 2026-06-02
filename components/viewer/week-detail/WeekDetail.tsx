@@ -19,9 +19,17 @@ export interface WeekDetailProps {
   readonly onAddEvent?: (date: string, kind: DayEventKind) => void;
   /** Remove a manual event by id. */
   readonly onRemoveEvent?: (id: string) => void;
+  /** Open the dedicated day-detail view for a date. */
+  readonly onOpenDay?: (date: string) => void;
 }
 
-export function WeekDetail({ week, eventsForDate, onAddEvent, onRemoveEvent }: WeekDetailProps) {
+export function WeekDetail({
+  week,
+  eventsForDate,
+  onAddEvent,
+  onRemoveEvent,
+  onOpenDay,
+}: WeekDetailProps) {
   const days = useMemo(() => fullWeekDays(week), [week]);
   const tasks = useMemo(() => aggregateTasks(days), [days]);
 
@@ -49,9 +57,11 @@ export function WeekDetail({ week, eventsForDate, onAddEvent, onRemoveEvent }: W
       <SectionTitle>Dagelijkse details</SectionTitle>
       <DayBreakdown
         days={days}
+        ownerId={week.user.id}
         eventsForDate={eventsForDate}
         onAddEvent={onAddEvent}
         onRemoveEvent={onRemoveEvent}
+        onOpenDay={onOpenDay}
       />
     </div>
   );

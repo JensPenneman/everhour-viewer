@@ -18,7 +18,8 @@ import { ProfileDetail } from "./ProfileDetail";
 import { Sidebar, type SidebarView } from "./Sidebar";
 import { ToastTray } from "./ToastTray";
 import { Welcome } from "./Welcome";
-import { WeekDetail } from "./week-detail";
+import { WeekDetail, fullWeekDays } from "./week-detail";
+import { DayDetail } from "./day-detail";
 
 /**
  * Top-level orchestrator for the viewer.
@@ -57,6 +58,9 @@ export function Viewer() {
 
   const [view, setView] = useState<SidebarView>("empty");
   const [activeIso, setActiveIso] = useState<string | null>(null);
+  // When set, the dedicated day-detail view is shown for this ISO date
+  // (within the active week). Cleared on week change / back.
+  const [dayDate, setDayDate] = useState<string | null>(null);
   const [menuOpen, setMenuOpen] = useState(false);
   const [keyDialogOpen, setKeyDialogOpen] = useState(false);
   const [integrationsOpen, setIntegrationsOpen] = useState(false);
@@ -73,6 +77,13 @@ export function Viewer() {
 
   const effectiveActiveIso = activeIso ?? cache.sortedWeeks[0]?.week.isoWeek ?? null;
   const activeWeek = cache.sortedWeeks.find((w) => w.week.isoWeek === effectiveActiveIso) ?? null;
+  const activeDay = useMemo(
+    () =>
+      dayDate && activeWeek
+        ? (fullWeekDays(activeWeek).find((d) => d.date === dayDate) ?? null)
+        : null,
+    [dayDate, activeWeek],
+  );
 
   // Keep the holiday / ICS provider window aligned with the data we
   // have on screen. Re-runs only when the underlying weeks change.
@@ -100,7 +111,7 @@ export function Viewer() {
   );
 
   useKeyboardNav({
-    enabled: effectiveView === "week" && cache.sortedWeeks.length > 0,
+    enabled: effectiveView === "week" && dayDate === null && cache.sortedWeeks.length > 0,
     onPrev: () => {
       const idx = cache.sortedWeeks.findIndex((w) => w.week.isoWeek === effectiveActiveIso);
       const next = cache.sortedWeeks[Math.max(0, idx - 1)];
@@ -127,6 +138,7 @@ export function Viewer() {
         knownWeeks: cache.weeks.map((w) => ({
           isoWeek: w.week.isoWeek,
           status: w.approval.status,
+          schemaVersion: w.schemaVersion,
         })),
         onProfile: (profile) => cache.setProfile(profile),
         onWeek: (week) => {
@@ -263,9 +275,13 @@ export function Viewer() {
           view={effectiveView}
           onSelectWeek={(iso) => {
             setActiveIso(iso);
+            setDayDate(null);
             setView("week");
           }}
-          onSelectProfile={() => setView("profile")}
+          onSelectProfile={() => {
+            setDayDate(null);
+            setView("profile");
+          }}
         />
 
         <main className="flex-1 overflow-y-auto px-9 py-7">
@@ -280,12 +296,23 @@ export function Viewer() {
           ) : effectiveView === "profile" && cache.profile ? (
             <ProfileDetail profile={cache.profile} />
           ) : effectiveView === "week" && activeWeek ? (
-            <WeekDetail
-              week={activeWeek}
-              eventsForDate={eventsForDate}
-              onAddEvent={onAddEvent}
-              onRemoveEvent={onRemoveEvent}
-            />
+            dayDate && activeDay ? (
+              <DayDetail
+                week={activeWeek}
+                day={activeDay}
+                events={eventsForDate?.(dayDate)}
+                tzOffsetHours={cache.profile?.timezone ?? null}
+                onBack={() => setDayDate(null)}
+              />
+            ) : (
+              <WeekDetail
+                week={activeWeek}
+                eventsForDate={eventsForDate}
+                onAddEvent={onAddEvent}
+                onRemoveEvent={onRemoveEvent}
+                onOpenDay={setDayDate}
+              />
+            )
           ) : (
             <div className="text-muted">Selecteer een week in de zijbalk.</div>
           )}
