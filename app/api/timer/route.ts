@@ -1,6 +1,7 @@
 import { NextResponse, type NextRequest } from "next/server";
-import { getCurrentTimer, startTimer, stopTimer } from "@/lib/everhour";
-import { everhourErrorResponse, noKeyResponse, resolveKey } from "@/server/http";
+import { everhourErrorResponse, invalidRequest, noKeyResponse, resolveKey } from "@/server/http";
+import { getTimer, startTimerForTask, stopRunningTimer } from "@/server/services";
+import { timerStartSchema } from "@/server/validation/live";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -10,7 +11,7 @@ export async function GET(req: NextRequest): Promise<Response> {
   const key = resolveKey(req);
   if (!key) return noKeyResponse();
   try {
-    return NextResponse.json(await getCurrentTimer(key, req.signal));
+    return NextResponse.json(await getTimer(key, req.signal));
   } catch (e) {
     return everhourErrorResponse(e);
   }
@@ -21,18 +22,11 @@ export async function POST(req: NextRequest): Promise<Response> {
   const key = resolveKey(req);
   if (!key) return noKeyResponse();
 
-  let body: { taskId?: unknown };
-  try {
-    body = await req.json();
-  } catch {
-    body = {};
-  }
-  if (typeof body.taskId !== "string" || !body.taskId) {
-    return NextResponse.json({ error: "invalid_request" }, { status: 400 });
-  }
+  const parsed = timerStartSchema.safeParse(await req.json().catch(() => null));
+  if (!parsed.success) return invalidRequest();
 
   try {
-    return NextResponse.json(await startTimer(key, body.taskId, req.signal));
+    return NextResponse.json(await startTimerForTask(key, parsed.data.taskId, req.signal));
   } catch (e) {
     return everhourErrorResponse(e);
   }
@@ -43,7 +37,7 @@ export async function DELETE(req: NextRequest): Promise<Response> {
   const key = resolveKey(req);
   if (!key) return noKeyResponse();
   try {
-    return NextResponse.json(await stopTimer(key, req.signal));
+    return NextResponse.json(await stopRunningTimer(key, req.signal));
   } catch (e) {
     return everhourErrorResponse(e);
   }

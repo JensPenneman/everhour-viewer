@@ -6,7 +6,7 @@ import type { WeekRecord } from "@/lib/everhour";
 import { fmtDuration } from "@/lib/format";
 import { profileKey, timesheetKeys } from "@/lib/query";
 import { readNdjsonStream } from "@/lib/streaming/ndjson";
-import type { SyncEvent } from "@/server/sync";
+import type { SyncEvent } from "@/lib/sync-protocol";
 
 export type SyncPhase = "idle" | "connecting" | "fetching" | "processing" | "done" | "error";
 

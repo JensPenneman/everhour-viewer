@@ -1,15 +1,14 @@
 import "server-only";
 
+import { EverhourError, buildWeek } from "@/lib/everhour";
+import type { MemberMap } from "@/lib/everhour";
+import { writeNdjsonLine } from "@/lib/streaming/ndjson";
 import {
-  EverhourError,
-  buildWeek,
   fetchProfile,
   fetchTeamMembers,
   fetchTimesheetList,
   fetchWeekEntries,
-} from "@/lib/everhour";
-import type { MemberMap } from "@/lib/everhour";
-import { writeNdjsonLine } from "@/lib/streaming/ndjson";
+} from "@/server/everhour";
 import type { SyncEvent } from "./events";
 import { buildPlan } from "./plan";
 import type { SyncRequest } from "./schema";

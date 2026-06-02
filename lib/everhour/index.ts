@@ -1,28 +1,15 @@
 /**
- * Public surface of the everhour library.
+ * Public surface of the everhour library — the **isomorphic** pieces only:
+ * domain types, the error class, the ISO-week helper, and the pure transforms.
  *
- * Imports from this barrel are stable; the underlying file layout may
- * change. `server-only` boundaries are enforced by `lib/everhour/api.ts`
- * itself — re-exporting through this barrel is fine because the
- * `server-only` import surfaces at the leaf module.
+ * This barrel is safe to import from Client Components (it pulls in no
+ * `server-only` code). The server-only data layer — `everhourFetch` and the
+ * `fetch*`/timer/clock operations — lives in `@/server/everhour`.
  */
 
 export { EverhourError } from "./errors";
 export { isoWeekLabel } from "./iso-week";
 export { sanitizeProfile, buildWeek } from "./transforms";
-export {
-  fetchProfile,
-  fetchTeamMembers,
-  fetchTimesheetList,
-  fetchWeekEntries,
-  getCurrentTimer,
-  startTimer,
-  stopTimer,
-  searchTasks,
-  getClockToday,
-  clockInOut,
-  fetchTimeRange,
-} from "./api";
 export { WEEK_SCHEMA_VERSION } from "./types";
 export type {
   ApprovalStatus,

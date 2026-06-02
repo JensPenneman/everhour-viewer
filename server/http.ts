@@ -18,6 +18,11 @@ export function noKeyResponse(): NextResponse {
   return NextResponse.json({ error: "no_api_key" }, { status: 400 });
 }
 
+/** 400 for a request that failed validation at the route boundary. */
+export function invalidRequest(): NextResponse {
+  return NextResponse.json({ error: "invalid_request" }, { status: 400 });
+}
+
 /** Map an Everhour failure onto an HTTP response, preserving the upstream status. */
 export function everhourErrorResponse(e: unknown): NextResponse {
   if (e instanceof EverhourError) {

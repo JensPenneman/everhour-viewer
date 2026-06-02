@@ -1,6 +1,5 @@
 import "server-only";
-import { everhourFetch } from "./client";
-import { sanitizeProfile } from "./transforms";
+import { sanitizeProfile } from "@/lib/everhour/transforms";
 import type {
   ClockStatus,
   EverhourProfile,
@@ -11,7 +10,8 @@ import type {
   RawTimesheet,
   TaskHit,
   Timer,
-} from "./types";
+} from "@/lib/everhour/types";
+import { everhourFetch } from "./client";
 
 /**
  * High-level Everhour operations layered on top of {@link everhourFetch}.

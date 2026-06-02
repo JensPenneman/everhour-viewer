@@ -1,5 +1,5 @@
 import type { JsonValue } from "@/lib/json";
-import { EverhourError } from "./errors";
+import { EverhourError } from "@/lib/everhour/errors";
 
 const API_BASE = "https://api.everhour.com";
 
