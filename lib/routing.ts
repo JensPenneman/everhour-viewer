@@ -33,6 +33,16 @@ export function parseRoute(pathname: string): ViewerRoute {
   return { view: "home" };
 }
 
+/**
+ * Navigation depth, used to pick a forward / back / sibling view-transition
+ * direction: home (0) → week|profile (1) → day (2).
+ */
+export function routeDepth(route: ViewerRoute): number {
+  if (route.view === "home") return 0;
+  if (route.view === "profile") return 1;
+  return route.date ? 2 : 1;
+}
+
 export const HOME_HREF = "/";
 export const PROFILE_HREF = "/profile";
 

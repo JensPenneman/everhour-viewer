@@ -104,3 +104,74 @@ body {
 .animate-fade-in {
   animation: fade-in 0.16s ease-out;
 }
+
+/* ── View transitions ──────────────────────────────────────────────────── */
+/* Only the main view is tagged, so the header and sidebar (captured as the
+   `root` snapshot) never move — just the content area cross-fades or slides.
+   `useViewTransition` sets <html data-vt="forward|back|cross"> per navigation;
+   browsers without the API / reduced-motion users get an instant swap. */
+.vt-main {
+  view-transition-name: main-view;
+}
+
+@keyframes vt-in {
+  from {
+    opacity: 0;
+  }
+}
+@keyframes vt-out {
+  to {
+    opacity: 0;
+  }
+}
+@keyframes vt-in-up {
+  from {
+    opacity: 0;
+    transform: translateY(12px);
+  }
+}
+@keyframes vt-out-up {
+  to {
+    opacity: 0;
+    transform: translateY(-8px);
+  }
+}
+@keyframes vt-in-down {
+  from {
+    opacity: 0;
+    transform: translateY(-12px);
+  }
+}
+@keyframes vt-out-down {
+  to {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  /* Keep the chrome (everything but the main view) perfectly still. */
+  ::view-transition-old(root),
+  ::view-transition-new(root) {
+    animation: none;
+  }
+
+  ::view-transition-old(main-view) {
+    animation: 180ms cubic-bezier(0.4, 0, 0.2, 1) both vt-out;
+  }
+  ::view-transition-new(main-view) {
+    animation: 260ms cubic-bezier(0.4, 0, 0.2, 1) both vt-in;
+  }
+  :root[data-vt="forward"]::view-transition-old(main-view) {
+    animation-name: vt-out-up;
+  }
+  :root[data-vt="forward"]::view-transition-new(main-view) {
+    animation-name: vt-in-up;
+  }
+  :root[data-vt="back"]::view-transition-old(main-view) {
+    animation-name: vt-out-down;
+  }
+  :root[data-vt="back"]::view-transition-new(main-view) {
+    animation-name: vt-in-down;
+  }
+}

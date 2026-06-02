@@ -1,6 +1,6 @@
 "use client";
 
-import { usePathname, useRouter } from "next/navigation";
+import { usePathname } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   useApiKey,
@@ -9,6 +9,7 @@ import {
   useStreamingSync,
   useToasts,
   useViewerCache,
+  useViewTransition,
 } from "@/hooks";
 import { buildBackupFile, downloadBackup, readBackupFiles } from "@/lib/backup";
 import { toLocalIsoDate } from "@/lib/format";
@@ -65,7 +66,8 @@ export function Viewer() {
 
   // The URL is the source of truth for which view is shown, so weeks and
   // day-details are deep-linkable and survive refresh / back-forward.
-  const router = useRouter();
+  // `navigate` wraps router pushes in a View Transition (see useViewTransition).
+  const navigate = useViewTransition();
   const pathname = usePathname();
   const route = useMemo(() => parseRoute(pathname ?? HOME_HREF), [pathname]);
 
@@ -118,16 +120,17 @@ export function Viewer() {
 
   useKeyboardNav({
     enabled: effectiveView === "week" && dayDate === null && cache.sortedWeeks.length > 0,
-    // `replace` so rapid arrow-stepping doesn't flood the history stack.
+    // `replace` so rapid arrow-stepping doesn't flood history; `animate: false`
+    // so quick stepping stays snappy rather than queuing cross-fades.
     onPrev: () => {
       const idx = cache.sortedWeeks.findIndex((w) => w.week.isoWeek === effectiveActiveIso);
       const next = cache.sortedWeeks[Math.max(0, idx - 1)];
-      if (next) router.replace(weekHref(next.week.isoWeek));
+      if (next) navigate(weekHref(next.week.isoWeek), { replace: true, animate: false });
     },
     onNext: () => {
       const idx = cache.sortedWeeks.findIndex((w) => w.week.isoWeek === effectiveActiveIso);
       const next = cache.sortedWeeks[Math.min(cache.sortedWeeks.length - 1, idx + 1)];
-      if (next) router.replace(weekHref(next.week.isoWeek));
+      if (next) navigate(weekHref(next.week.isoWeek), { replace: true, animate: false });
     },
   });
 
@@ -187,9 +190,9 @@ export function Viewer() {
     setMenuOpen(false);
     if (!confirm("Lokale gegevens wissen? Je API-sleutel blijft bewaard.")) return;
     cache.clear();
-    router.push(HOME_HREF);
+    navigate(HOME_HREF);
     toastsPush("Cache gewist", "good");
-  }, [cache, router, toastsPush]);
+  }, [cache, navigate, toastsPush]);
 
   const onLoadFiles = useCallback(
     async (files: FileList) => {
@@ -199,9 +202,9 @@ export function Viewer() {
       if (loaded.hasWeeks) cache.upsertWeeks(loaded.weeks);
       if (loaded.hasWeeks) {
         const next = [...loaded.weeks].sort((a, b) => b.week.from.localeCompare(a.week.from))[0];
-        if (next) router.push(weekHref(next.week.isoWeek));
+        if (next) navigate(weekHref(next.week.isoWeek));
       } else if (loaded.hasProfile) {
-        router.push(PROFILE_HREF);
+        navigate(PROFILE_HREF);
       }
       const parts: string[] = [];
       if (loaded.hasProfile) parts.push("profiel");
@@ -210,7 +213,7 @@ export function Viewer() {
       }
       toastsPush(`Geladen: ${parts.join(" + ")}`, "good");
     },
-    [cache, router, toastsPush],
+    [cache, navigate, toastsPush],
   );
 
   const onSubmitKey = useCallback(
@@ -270,11 +273,11 @@ export function Viewer() {
           weeks={cache.sortedWeeks}
           activeIso={effectiveActiveIso}
           view={effectiveView}
-          onSelectWeek={(iso) => router.push(weekHref(iso))}
-          onSelectProfile={() => router.push(PROFILE_HREF)}
+          onSelectWeek={(iso) => navigate(weekHref(iso))}
+          onSelectProfile={() => navigate(PROFILE_HREF)}
         />
 
-        <main className="flex-1 overflow-y-auto px-9 py-7">
+        <main className="vt-main flex-1 overflow-y-auto px-9 py-7">
           {showWelcome ? (
             <Welcome
               hasUserKey={apiKey.hasUserKey}
@@ -292,7 +295,7 @@ export function Viewer() {
                 day={activeDay}
                 events={eventsForDate?.(dayDate)}
                 tzOffsetHours={cache.profile?.timezone ?? null}
-                onBack={() => router.push(weekHref(activeWeek.week.isoWeek))}
+                onBack={() => navigate(weekHref(activeWeek.week.isoWeek))}
               />
             ) : (
               <WeekDetail
@@ -300,7 +303,7 @@ export function Viewer() {
                 eventsForDate={eventsForDate}
                 onAddEvent={onAddEvent}
                 onRemoveEvent={onRemoveEvent}
-                onOpenDay={(date) => router.push(dayHref(activeWeek.week.isoWeek, date))}
+                onOpenDay={(date) => navigate(dayHref(activeWeek.week.isoWeek, date))}
               />
             )
           ) : (

@@ -10,3 +10,4 @@ export {
   type StreamingSyncOptions,
 } from "./useStreamingSync";
 export { useDayEvents, type DayEventsApi } from "./useDayEvents";
+export { useViewTransition, type Navigate, type NavigateOptions } from "./useViewTransition";
