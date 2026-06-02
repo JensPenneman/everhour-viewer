@@ -91,11 +91,12 @@ imports client code.
 ```
 everhour-viewer/
 ├── app/                          # Next.js App Router
-│   ├── api/{sync,timer,tasks,    # thin routes: resolveKey → zod validate
-│   │        clock,time}/route.ts #            → service → respond
-│   ├── providers.tsx             # TanStack Query client + localStorage persistence
-│   ├── layout.tsx                # mounts <AppProviders><Viewer/></AppProviders>
-│   └── [[...slug]]/page.tsx      # renders null; the URL alone drives the view
+│   ├── api/trpc/[trpc]/route.ts  # tRPC handler (timer/tasks/clock/time/system)
+│   ├── api/sync/route.ts         # streaming NDJSON sync (not tRPC)
+│   ├── providers.tsx             # Query + localStorage persistence + tRPC providers
+│   ├── layout.tsx                # mounts <AppShell> around the active page
+│   ├── page.tsx · profile/ ·     # real route segments — the URL drives the view
+│   │   week/[isoWeek]/[date]/
 ├── features/                     # feature modules (components/ hooks/ [lib/] index.ts)
 │   ├── live/                     # Vandaag — timers, clock, day/week targets
 │   ├── timesheets/               # the viewer — week + day-detail, edit audit, cache store
@@ -108,7 +109,8 @@ everhour-viewer/
 ├── lib/                          # shared kernel (framework-agnostic)
 │   ├── everhour/                 # domain types, errors, iso-week, transforms
 │   ├── format/                   # dates/times (date-fns), Dutch i18n
-│   ├── query/                    # TanStack Query client, persister, keys, fetcher
+│   ├── query/                    # TanStack Query client, persister, keys
+│   ├── trpc/                     # typed tRPC client (+ AppRouter type import)
 │   ├── storage/                  # typed localStorage (api key, day events)
 │   ├── events/ · providers/      # day-event domain + provider registry
 │   ├── streaming/                # NDJSON reader/writer
@@ -117,17 +119,18 @@ everhour-viewer/
 ├── server/                       # server-only (import "server-only")
 │   ├── everhour/                 # DATA layer: HTTP client + Everhour ops
 │   ├── services/                 # BUSINESS layer: timer / tasks / clock / time
-│   ├── validation/               # zod request schemas
-│   ├── sync/                     # delta plan + streaming orchestrator
-│   └── http.ts                   # route kit (resolveKey, error mapping)
+│   ├── validation/               # zod schemas (shared by tRPC procedures)
+│   ├── trpc/                     # tRPC context + appRouter
+│   └── sync/                     # delta plan + streaming orchestrator
 ├── tests/ {unit, e2e, stubs}
 ├── docs/architecture.md          # system design + sync protocol
 └── playwright.config.ts · vitest.config.ts · package.json
 ```
 
-State + server I/O flow through **TanStack Query** (the cache is persisted to
-`localStorage`, so weeks browse offline); the three real tables use
-**TanStack Table**; dates go through **date-fns**.
+Server I/O goes through **tRPC** (end-to-end typed) layered on the persisted
+**TanStack Query** client — the cache persists to `localStorage`, so weeks
+browse offline; streaming sync stays on a dedicated NDJSON route. The three
+real tables use **TanStack Table**; dates go through **date-fns**.
 
 See [`docs/architecture.md`](docs/architecture.md) for a deeper walk-through
 of the sync protocol, error model, and state flow.
