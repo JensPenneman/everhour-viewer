@@ -9,7 +9,7 @@
   },
   "scripts": {
     "dev": "next dev",
-    "build": "next build",
+    "build": "next build --webpack",
     "start": "next start",
     "lint": "eslint",
     "lint:fix": "eslint --fix",
@@ -22,11 +22,12 @@
     "test:e2e": "playwright test",
     "test:e2e:ui": "playwright test --ui",
     "shoot": "node scripts/shoot.mjs",
-    "lighthouse": "next build && node scripts/lighthouse.mjs",
+    "lighthouse": "next build --webpack && node scripts/lighthouse.mjs",
     "check": "npm run typecheck && npm run lint && npm run format:check && npm run test",
     "prepare": "husky"
   },
   "dependencies": {
+    "@serwist/next": "^9.5.11",
     "@tanstack/query-sync-storage-persister": "^5.100.14",
     "@tanstack/react-query": "^5.100.14",
     "@tanstack/react-query-persist-client": "^5.100.14",
@@ -55,6 +56,7 @@
     "lighthouse": "^13.3.0",
     "lint-staged": "^17.0.7",
     "prettier": "^3.8.3",
+    "serwist": "^9.5.11",
     "tailwindcss": "^4",
     "typescript": "^6.0.3",
     "vitest": "^4.1.7"

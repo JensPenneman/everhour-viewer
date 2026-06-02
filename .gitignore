@@ -50,3 +50,8 @@ next-env.d.ts
 
 # Vitest coverage
 /coverage/
+
+# Serwist-generated service worker (built from app/sw.ts)
+/public/sw.js
+/public/sw.js.map
+/public/swe-worker-*.js

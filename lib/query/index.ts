@@ -13,4 +13,5 @@ export {
 } from "./persister";
 export { liveFetch, type LiveFetchInit } from "./fetcher";
 export { invalidateServerQueries, useStorageSync } from "./storage-sync";
+export { useOnline } from "./use-online";
 export { authKeys, eventKeys, liveKeys, profileKey, syncKeys, timesheetKeys } from "./keys";

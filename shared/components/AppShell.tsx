@@ -11,10 +11,12 @@ import {
 } from "@/features/sync";
 import { useViewerCache } from "@/features/timesheets";
 import { toLocalIsoDate } from "@/lib/format";
+import { useOnline } from "@/lib/query";
 import { PROFILE_HREF, TODAY_HREF, parseRoute, weekHref } from "@/lib/routing";
 import { useApiKey, useKeyboardNav, useToasts, useViewTransition } from "@/shared/hooks";
 import { Header } from "./Header";
 import { KeyDialog } from "./KeyDialog";
+import { ServiceWorkerManager } from "./ServiceWorkerManager";
 import { Sidebar, type SidebarView } from "./Sidebar";
 import { ToastTray } from "./ToastTray";
 import { ViewerProvider, type ViewerContextValue } from "./viewer-context";
@@ -207,6 +209,12 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     [toastsPush],
   );
 
+  const online = useOnline();
+  const onSwUpdate = useCallback(
+    () => toastsPush("Nieuwe versie beschikbaar — herlaad om bij te werken.", "info"),
+    [toastsPush],
+  );
+
   const ctx = useMemo<ViewerContextValue>(
     () => ({
       apiKey,
@@ -262,6 +270,15 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           onLoadFiles={onLoadFiles}
         />
 
+        {!online ? (
+          <div
+            role="status"
+            className="bg-warn-bg text-warn text-[12.5px] text-center px-4 py-1.5 border-b border-border"
+          >
+            Offline — je bekijkt gegevens uit de cache; live acties zijn nu niet beschikbaar.
+          </div>
+        ) : null}
+
         <div className="flex flex-1 overflow-hidden">
           <Sidebar
             profile={cache.profile}
@@ -279,6 +296,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         </div>
 
         <ToastTray toasts={toasts.toasts} />
+        <ServiceWorkerManager onUpdate={onSwUpdate} />
 
         <KeyDialog
           open={keyDialogOpen}

@@ -33,6 +33,10 @@ export function makeQueryClient(): QueryClient {
       },
       mutations: {
         retry: false,
+        // Run immediately even when offline so a write fails fast with a clear
+        // error instead of being queued and replayed later — a deferred
+        // start/stop timer would be wrong (and could double-start).
+        networkMode: "always",
       },
     },
   });
