@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import { Viewer } from "@/shared/components";
+import { AppShell } from "@/shared/components";
 import { AppProviders } from "./providers";
 import "./globals.css";
 
@@ -9,11 +9,11 @@ export const metadata: Metadata = {
 };
 
 /**
- * The viewer is mounted once here in the persistent root layout (not in the
- * page) so client-side navigation between `/`, `/week/…` and `/profile`
- * re-renders it with the new URL rather than remounting it — no re-hydration
- * flash, no provider refetch, no lost dialog state. The matched page (the
- * optional catch-all) renders nothing; the URL alone drives the view.
+ * The persistent app shell wraps every page here in the root layout, so
+ * client-side navigation between the route segments (`/`, `/week/…`,
+ * `/profile`) swaps only the page in `<main>` — the header, sidebar, dialogs,
+ * and provider state stay mounted (no re-hydration flash, no refetch, no lost
+ * dialog state). Each route segment owns its own page.
  */
 export default function RootLayout({
   children,
@@ -24,8 +24,7 @@ export default function RootLayout({
     <html lang="nl" className="h-full antialiased">
       <body className="min-h-full flex flex-col">
         <AppProviders>
-          <Viewer />
-          {children}
+          <AppShell>{children}</AppShell>
         </AppProviders>
       </body>
     </html>
