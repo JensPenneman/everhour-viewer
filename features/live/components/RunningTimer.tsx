@@ -35,7 +35,7 @@ export function RunningTimer({
 
   const { task } = timer;
   return (
-    <div className="bg-panel border border-border rounded-xl px-5 py-5 mb-5 border-l-4 border-l-accent">
+    <div className="bg-panel border border-border rounded-xl px-5 py-5 mb-5 border-l-4 border-l-accent [view-transition-name:live-timer]">
       <div className="flex items-center gap-5">
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2 text-[11px] uppercase tracking-wider text-accent font-semibold">

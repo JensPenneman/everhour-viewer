@@ -19,7 +19,7 @@ export function BreakCountdown({
   onCancel,
 }: BreakCountdownProps) {
   return (
-    <Panel className="px-5 py-5 mb-5 border-l-4 border-l-warn">
+    <Panel className="px-5 py-5 mb-5 border-l-4 border-l-warn [view-transition-name:live-timer]">
       <div className="flex items-center gap-5">
         <div className="flex-1 min-w-0">
           <div className="text-[11px] uppercase tracking-wider text-warn font-semibold">

@@ -90,7 +90,7 @@ function Bar({ tone, children }: { tone: Tone; children: ReactNode }) {
   return (
     <div
       role="status"
-      className={`${bg} border-b border-border px-5 py-1.5 flex items-center gap-3 text-[13px]`}
+      className={`${bg} border-b border-border px-5 py-1.5 flex items-center gap-3 text-[13px] [view-transition-name:live-timer]`}
     >
       {children}
     </div>

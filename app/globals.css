@@ -176,4 +176,20 @@ body {
   :root[data-vt="back"]::view-transition-new(main-view) {
     animation-name: vt-in-down;
   }
+
+  /* The running timer morphs between the Vandaag hero and the top shell strip
+     (both tagged `view-transition-name: live-timer`; only one exists per route,
+     so the browser pairs them and animates position + size). The captured
+     images fill the morphing box so the tall card and the thin bar blend
+     cleanly instead of letterboxing. */
+  ::view-transition-group(live-timer) {
+    animation-duration: 320ms;
+    animation-timing-function: cubic-bezier(0.4, 0, 0.2, 1);
+  }
+  ::view-transition-old(live-timer),
+  ::view-transition-new(live-timer) {
+    height: 100%;
+    animation-duration: 320ms;
+    animation-timing-function: cubic-bezier(0.4, 0, 0.2, 1);
+  }
 }

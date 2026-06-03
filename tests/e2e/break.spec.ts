@@ -171,6 +171,11 @@ test.describe("Vandaag — scheduled transitions (mocked)", () => {
     await expect(strip).toBeVisible({ timeout: 10_000 });
     await expect(strip.getByText(/Mock task/)).toBeVisible();
 
+    // The strip carries the morph tag so it view-transitions from the Vandaag
+    // hero. Only assert where the browser supports View Transitions (Chromium).
+    const vtName = await strip.evaluate((el) => getComputedStyle(el).viewTransitionName);
+    if (vtName && vtName !== "none") expect(vtName).toBe("live-timer");
+
     // Stop from the shell strip → it disappears.
     await strip.getByRole("button", { name: "Stop" }).click();
     await expect(strip).toBeHidden({ timeout: 10_000 });
