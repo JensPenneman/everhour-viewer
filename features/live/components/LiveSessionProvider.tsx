@@ -3,9 +3,9 @@
 import { useCallback, useState, type ReactNode } from "react";
 import type { EverhourProfile } from "@/lib/everhour";
 import type { ScheduledTransition, TaskMeta } from "@/lib/storage";
-import { fmtDuration, toLocalIsoDate } from "@/lib/format";
+import { fmtDuration } from "@/lib/format";
 import { useOnline } from "@/lib/query";
-import type { ToastKind } from "@/shared/hooks";
+import { useToday, type ToastKind } from "@/shared/hooks";
 import { useAlert, useLedger, useLive, useScheduledTransition } from "../hooks";
 import type { FireInfo } from "../hooks";
 import { toMeta } from "../lib/target-ticket";
@@ -40,9 +40,9 @@ export function LiveSessionProvider({
   pushToast,
   children,
 }: LiveSessionProviderProps) {
-  // `today` is stable for the session's lifetime; a tab left open across
-  // midnight is an edge the ledger handles by date key, not worth a ticking dep.
-  const [today] = useState(() => toLocalIsoDate(new Date()));
+  // Kept fresh across midnight so a tab left open overnight doesn't bucket the
+  // new day's timer totals / ledger entries under yesterday.
+  const today = useToday();
   const online = useOnline();
   const live = useLive(profile?.id ?? null, today, canTrack);
   const alert = useAlert(pushToast);
