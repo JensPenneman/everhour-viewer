@@ -55,6 +55,11 @@ export interface ScheduledTransitionApi {
   readonly fireNow: () => void;
 }
 
+/** Clear the persisted schedule only if it is still the one we acted on. */
+function clearIfStillOurs(t: ScheduledTransition): void {
+  if (readSchedule()?.createdAt === t.createdAt) writeSchedule(null);
+}
+
 /**
  * The scheduled-timer-transition engine — the shared backbone of Pauze and
  * Gespaarde minuten.
@@ -108,20 +113,30 @@ export function useScheduledTransition(opts: ScheduledTransitionOptions): Schedu
   const fire = useCallback(
     async (t: ScheduledTransition) => {
       if (firingRef.current) return;
+      // Bail if this schedule was superseded or cancelled while we were queued
+      // (e.g. the user manually acted, or another tab changed the timer).
+      if (readSchedule()?.createdAt !== t.createdAt) return;
       firingRef.current = true;
       const at = Date.now();
       const lateMs = Math.max(0, at - t.fireAt);
       try {
         if (t.kind === "start") {
           await start(t.task.id);
-          writeSchedule(null);
+          clearIfStillOurs(t);
           onFireRef.current?.(t, { actualElapsedSec: 0, booked: false, lateMs });
         } else {
-          const wasRunning = timerRef.current?.running ?? false;
+          // Apply: only stop if OUR task is genuinely the running timer — never
+          // stop a different timer the user may have started in the meantime.
+          const onOurTask = timerRef.current?.running && timerRef.current.task?.id === t.task.id;
+          if (!onOurTask) {
+            clearIfStillOurs(t);
+            onAbortRef.current?.(t, { action: "resolve", reason: "apply target not running" });
+            return;
+          }
           await stop();
-          writeSchedule(null);
+          clearIfStillOurs(t);
           const elapsed = Math.max(0, Math.round((at - t.createdAt) / 1000));
-          onFireRef.current?.(t, { actualElapsedSec: elapsed, booked: wasRunning, lateMs });
+          onFireRef.current?.(t, { actualElapsedSec: elapsed, booked: true, lateMs });
         }
       } catch {
         // Mutation failed (offline / transient): keep the schedule and retry
