@@ -50,6 +50,15 @@ interface ScheduleFile {
 let lastRaw: string | null | undefined;
 let snapshot: ScheduledTransition | null = null;
 
+/**
+ * Same-tab subscribers. We notify these directly rather than dispatching a
+ * synthetic `StorageEvent`: other "storage" listeners (e.g. React Query
+ * Devtools) read a synthetic event's null `newValue` as a deletion and remove
+ * the very key we just wrote. The native event is still used, but only for
+ * genuine cross-tab changes (which carry a correct `newValue`).
+ */
+const listeners = new Set<() => void>();
+
 function parse(raw: string | null): ScheduledTransition | null {
   if (!raw) return null;
   try {
@@ -81,22 +90,26 @@ export function writeSchedule(transition: ScheduledTransition | null): boolean {
       const payload: ScheduleFile = { schemaVersion: 1, transition };
       window.localStorage.setItem(STORAGE_KEYS.timerSchedule, JSON.stringify(payload));
     }
-    // Wake same-tab subscribers — the native `storage` event is cross-tab only.
-    window.dispatchEvent(new StorageEvent("storage", { key: STORAGE_KEYS.timerSchedule }));
-    return true;
   } catch {
     return false;
   }
+  // Notify same-tab subscribers directly (see `listeners` above).
+  for (const l of listeners) l();
+  return true;
 }
 
 /** Subscribe a `useSyncExternalStore` to schedule changes (same-tab + cross-tab). */
 export function subscribeSchedule(onChange: () => void): () => void {
   if (typeof window === "undefined") return () => {};
+  listeners.add(onChange);
   const handler = (e: StorageEvent) => {
     if (e.key === null || e.key === STORAGE_KEYS.timerSchedule) onChange();
   };
   window.addEventListener("storage", handler);
-  return () => window.removeEventListener("storage", handler);
+  return () => {
+    listeners.delete(onChange);
+    window.removeEventListener("storage", handler);
+  };
 }
 
 function isTransition(t: unknown): t is ScheduledTransition {

@@ -175,4 +175,34 @@ test.describe("Vandaag — scheduled transitions (mocked)", () => {
     await strip.getByRole("button", { name: "Stop" }).click();
     await expect(strip).toBeHidden({ timeout: 10_000 });
   });
+
+  // Real-UI flows (no seeding): these exercise writeSchedule/writeLedgerFile at
+  // runtime — the path that a synthetic StorageEvent broke (devtools wiped the
+  // freshly-written key). Seed-at-load tests do not cover it.
+  test("clicking Pauze stops the timer and shows the auto-resume countdown", async ({ page }) => {
+    await page.addInitScript(() => window.localStorage.clear());
+    await installMocks(page, /* startRunning */ true);
+    await gotoVandaag(page);
+    await expect(page.getByText("Loopt nu")).toBeVisible({ timeout: 10_000 });
+
+    await page.getByRole("button", { name: "Pauze" }).first().click();
+    await expect(page.getByText("Pauze nemen")).toBeVisible();
+    await page.getByRole("button", { name: /Start pauze/ }).click();
+
+    // The schedule must be written and reactively picked up.
+    await expect(page.getByText("Pauze — hervat automatisch")).toBeVisible({ timeout: 8_000 });
+    await expect(page.getByRole("button", { name: "Hervat nu" })).toBeVisible();
+  });
+
+  test("Bijboeken updates the saved-minutes saldo reactively", async ({ page }) => {
+    await page.addInitScript(() => window.localStorage.clear());
+    await installMocks(page, /* startRunning */ false);
+    await gotoVandaag(page);
+
+    await expect(page.getByText("Gespaarde minuten")).toBeVisible();
+    await page.getByRole("button", { name: /Bijboeken/ }).click();
+
+    // The ledger write must be reactively reflected in the saldo + an entry row.
+    await expect(page.getByText("+15m").first()).toBeVisible({ timeout: 8_000 });
+  });
 });

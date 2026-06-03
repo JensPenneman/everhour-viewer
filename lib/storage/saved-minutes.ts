@@ -42,6 +42,14 @@ export const EMPTY_LEDGER_FILE: LedgerFile = Object.freeze({ schemaVersion: 1, d
 let lastRaw: string | null | undefined;
 let snapshot: LedgerFile = EMPTY_LEDGER_FILE;
 
+/**
+ * Same-tab subscribers, notified directly. A synthetic `StorageEvent` is unsafe
+ * here: other "storage" listeners (e.g. React Query Devtools) read its null
+ * `newValue` as a deletion and wipe the key we just wrote. The native event is
+ * kept only for genuine cross-tab changes.
+ */
+const listeners = new Set<() => void>();
+
 function parse(raw: string | null): LedgerFile {
   if (!raw) return EMPTY_LEDGER_FILE;
   try {
@@ -74,21 +82,26 @@ export function writeLedgerFile(file: LedgerFile): boolean {
   if (typeof window === "undefined") return false;
   try {
     window.localStorage.setItem(STORAGE_KEYS.savedMinutes, JSON.stringify(file));
-    window.dispatchEvent(new StorageEvent("storage", { key: STORAGE_KEYS.savedMinutes }));
-    return true;
   } catch {
     return false;
   }
+  // Notify same-tab subscribers directly (see `listeners` above).
+  for (const l of listeners) l();
+  return true;
 }
 
 /** Subscribe a `useSyncExternalStore` to ledger changes (same-tab + cross-tab). */
 export function subscribeLedger(onChange: () => void): () => void {
   if (typeof window === "undefined") return () => {};
+  listeners.add(onChange);
   const handler = (e: StorageEvent) => {
     if (e.key === null || e.key === STORAGE_KEYS.savedMinutes) onChange();
   };
   window.addEventListener("storage", handler);
-  return () => window.removeEventListener("storage", handler);
+  return () => {
+    listeners.delete(onChange);
+    window.removeEventListener("storage", handler);
+  };
 }
 
 function isEntry(e: unknown): e is LedgerEntry {
