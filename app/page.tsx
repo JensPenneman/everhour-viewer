@@ -9,7 +9,7 @@ import { useViewer, Welcome } from "@/shared/components";
  * restored, so the welcome-vs-data choice never flashes.
  */
 export default function HomePage() {
-  const { apiKey, cache, runSync, openKeyDialog, openFilePicker } = useViewer();
+  const { apiKey, cache, runSync, openKeyDialog, openFilePicker, pushToast } = useViewer();
 
   const hasData = cache.profile !== null || cache.weeks.length > 0;
   if (!hasData) {
@@ -31,6 +31,7 @@ export default function HomePage() {
       weeks={cache.weeks}
       onEnterKey={openKeyDialog}
       onSync={() => runSync(false)}
+      pushToast={pushToast}
     />
   );
 }

@@ -3,7 +3,7 @@
 import { createContext, useContext } from "react";
 import type { ViewerCacheApi } from "@/features/timesheets";
 import type { DayEvent, DayEventKind } from "@/lib/events";
-import type { ApiKeyApi, Navigate } from "@/shared/hooks";
+import type { ApiKeyApi, Navigate, ToastKind } from "@/shared/hooks";
 
 /**
  * Cross-cutting state the {@link AppShell} owns and route-segment pages
@@ -23,6 +23,8 @@ export interface ViewerContextValue {
   readonly openFilePicker: () => void;
   readonly onAddEvent: (date: string, kind: DayEventKind) => void;
   readonly onRemoveEvent: (id: string) => void;
+  /** Push a toast into the shell's single tray (pages have no tray of their own). */
+  readonly pushToast: (message: string, kind?: ToastKind) => void;
 }
 
 const ViewerContext = createContext<ViewerContextValue | null>(null);

@@ -226,6 +226,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       openFilePicker,
       onAddEvent,
       onRemoveEvent,
+      pushToast: toastsPush,
     }),
     [
       apiKey,
@@ -237,6 +238,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       openFilePicker,
       onAddEvent,
       onRemoveEvent,
+      toastsPush,
     ],
   );
 

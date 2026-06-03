@@ -8,10 +8,20 @@ export interface RunningTimerProps {
   readonly elapsedSec: number;
   readonly stopping: boolean;
   readonly onStop: () => void;
+  /** Open the break dialog (stop now, auto-resume after a chosen break). */
+  readonly onPause?: () => void;
+  readonly pausing?: boolean;
 }
 
 /** The hero of the Vandaag view: the running timer with a live HH:MM:SS clock. */
-export function RunningTimer({ timer, elapsedSec, stopping, onStop }: RunningTimerProps) {
+export function RunningTimer({
+  timer,
+  elapsedSec,
+  stopping,
+  onStop,
+  onPause,
+  pausing,
+}: RunningTimerProps) {
   if (!timer?.running || !timer.task) {
     return (
       <div className="bg-panel border border-border rounded-xl px-5 py-6 mb-5 text-center">
@@ -51,11 +61,23 @@ export function RunningTimer({ timer, elapsedSec, stopping, onStop }: RunningTim
         <div className="text-[34px] font-semibold tabular-nums leading-none shrink-0">
           {fmtClock(elapsedSec)}
         </div>
+        {onPause ? (
+          <Button
+            variant="default"
+            size="md"
+            onClick={onPause}
+            disabled={stopping || pausing}
+            className="shrink-0"
+            title="Stop nu en hervat automatisch na een pauze"
+          >
+            {pausing ? "Pauze…" : "Pauze"}
+          </Button>
+        ) : null}
         <Button
           variant="danger"
           size="md"
           onClick={onStop}
-          disabled={stopping}
+          disabled={stopping || pausing}
           className="shrink-0"
         >
           {stopping ? "Stoppen…" : "Stop"}
