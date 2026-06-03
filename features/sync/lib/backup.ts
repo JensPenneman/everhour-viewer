@@ -135,13 +135,20 @@ function isWeekRecord(v: unknown): v is WeekRecord {
   return isRecord(week) && typeof week["isoWeek"] === "string" && Array.isArray(v["days"]);
 }
 
-/** Structural check that an imported value is a stored {@link EverhourProfile}. */
+/**
+ * Structural check that an imported value is a stored {@link EverhourProfile}.
+ *
+ * A {@link WeekRecord} also carries a `user` object with id/name/email, so we
+ * discriminate on the keys only a profile/backup has and a week never does:
+ * neither a `week` (single-week file) nor a `weeks` (consolidated) key.
+ */
 function isProfile(v: unknown): v is EverhourProfile {
   return (
     isRecord(v) &&
     typeof v["id"] === "number" &&
     typeof v["name"] === "string" &&
     typeof v["email"] === "string" &&
+    !("week" in v) &&
     !("weeks" in v)
   );
 }

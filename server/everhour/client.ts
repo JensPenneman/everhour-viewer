@@ -65,7 +65,9 @@ export async function everhourFetch<T>(path: string, opts: FetchOptions): Promis
       if (resp.ok) {
         // Some writes (e.g. DELETE) return 204 / an empty body.
         if (resp.status === 204) return undefined as T;
-        const text = await resp.text();
+        // Trim so a whitespace-only body (some 201/empty responses) is treated
+        // as empty rather than throwing a SyntaxError on JSON.parse("").
+        const text = (await resp.text()).trim();
         return (text ? JSON.parse(text) : undefined) as T;
       }
 

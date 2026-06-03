@@ -170,7 +170,10 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   const onLoadFiles = useCallback(
     async (files: FileList) => {
       const loaded = await readBackupFiles(Array.from(files));
-      if (!loaded.hasWeeks && !loaded.hasProfile) return;
+      if (!loaded.hasWeeks && !loaded.hasProfile) {
+        toastsPush("Geen geldige back-upgegevens gevonden in de gekozen bestanden.", "error");
+        return;
+      }
       if (loaded.hasProfile) cache.setProfile(loaded.profile);
       if (loaded.hasWeeks) cache.upsertWeeks(loaded.weeks);
       if (loaded.hasWeeks) {

@@ -76,11 +76,18 @@ export function useDayEvents(): DayEventsApi {
 
   const { mutate: writeManual } = useMutation({
     mutationFn: (events: ReadonlyArray<DayEvent>) => {
-      writeManualEvents(events);
+      // writeManualEvents returns false on a localStorage failure (quota /
+      // disabled); reject so the write isn't reported as a success.
+      if (!writeManualEvents(events)) {
+        return Promise.reject(new Error("Kon dag-events niet opslaan."));
+      }
       return Promise.resolve(events);
     },
     onSuccess: () => {
       void client.invalidateQueries({ queryKey: eventKeys.manual() });
+    },
+    onError: (e) => {
+      console.error("[day-events] write failed:", e);
     },
   });
 

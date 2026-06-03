@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import type { WeekRecord } from "@/lib/everhour";
 import { fmtDuration } from "@/lib/format";
@@ -89,6 +89,13 @@ export function useStreamingSync(): StreamingSyncApi {
     controllerRef.current = null;
     reset();
   }, [reset]);
+
+  // Cancel a pending progress-reset timer if the hook ever unmounts.
+  useEffect(() => {
+    return () => {
+      if (clearTimerRef.current) clearTimeout(clearTimerRef.current);
+    };
+  }, []);
 
   const { mutateAsync } = useMutation({
     mutationKey: ["sync", "run"],

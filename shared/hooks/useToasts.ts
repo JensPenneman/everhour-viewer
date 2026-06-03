@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 export type ToastKind = "good" | "error" | "info";
 
@@ -32,6 +32,7 @@ const DEFAULT_TIMEOUTS: Record<ToastKind, number> = {
 export function useToasts(): ToastsApi {
   const [toasts, setToasts] = useState<Toast[]>([]);
   const timers = useRef(new Map<number, ReturnType<typeof setTimeout>>());
+  const nextId = useRef(0);
 
   const dismiss = useCallback((id: number) => {
     const t = timers.current.get(id);
@@ -44,13 +45,22 @@ export function useToasts(): ToastsApi {
 
   const push = useCallback(
     (message: string, kind: ToastKind = "info") => {
-      const id = Date.now() + Math.random();
+      const id = ++nextId.current; // monotonic — never collides
       setToasts((cur) => [...cur, { id, message, kind }]);
       const timer = setTimeout(() => dismiss(id), DEFAULT_TIMEOUTS[kind]);
       timers.current.set(id, timer);
     },
     [dismiss],
   );
+
+  // Clear any pending auto-dismiss timers on unmount (honours the doc above).
+  useEffect(() => {
+    const map = timers.current;
+    return () => {
+      for (const t of map.values()) clearTimeout(t);
+      map.clear();
+    };
+  }, []);
 
   return { toasts, push, dismiss };
 }
