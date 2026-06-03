@@ -34,9 +34,12 @@ const EMPTY: ReadonlyArray<DayEvent> = Object.freeze([]);
 /**
  * Persist the given set of manual events.
  *
- * Dispatches a `storage` event so in-tab `useSyncExternalStore`
- * subscribers refresh — the native `storage` event only fires across
- * tabs.
+ * Same-tab refresh is driven by the writing mutation's `onSuccess`
+ * invalidation in `useDayEvents`; genuine cross-tab changes arrive via the
+ * native `storage` event (the `useStorageSync` bridge). We deliberately do NOT
+ * dispatch a synthetic `storage` event: its null `newValue` is read as a
+ * deletion by other listeners (React Query Devtools) and wipes the key we just
+ * wrote. (Same defect class fixed in `timer-schedule.ts` / `saved-minutes.ts`.)
  */
 export function writeManualEvents(events: ReadonlyArray<DayEvent>): boolean {
   if (typeof window === "undefined") return false;
@@ -46,7 +49,6 @@ export function writeManualEvents(events: ReadonlyArray<DayEvent>): boolean {
       events: events.filter((e): e is DayEvent => isManualEvent(e)),
     };
     window.localStorage.setItem(STORAGE_KEYS.dayEvents, JSON.stringify(payload));
-    window.dispatchEvent(new StorageEvent("storage", { key: STORAGE_KEYS.dayEvents }));
     return true;
   } catch {
     return false;
