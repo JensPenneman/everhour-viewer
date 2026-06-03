@@ -50,6 +50,16 @@ describe("readNdjsonStream", () => {
     });
     expect(got).toEqual([1]);
   });
+
+  it("propagates an error thrown by onEvent instead of swallowing it", async () => {
+    // A handler that throws on a fatal event (e.g. a server `error` line) must
+    // reach the caller — only JSON parse failures are skipped.
+    await expect(
+      readNdjsonStream<{ n: number }>(streamOf('{"n":1}\n{"n":2}\n'), (e) => {
+        if (e.n === 2) throw new Error("fatal event");
+      }),
+    ).rejects.toThrow("fatal event");
+  });
 });
 
 describe("writeNdjsonLine", () => {

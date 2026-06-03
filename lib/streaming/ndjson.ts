@@ -27,7 +27,9 @@ const sharedEncoder = new TextEncoder();
  *
  * - Lines that fail to parse as JSON are skipped (with optional `onError`).
  * - The final, possibly-unterminated line is also yielded if it parses.
- * - Returns when the stream is done; throws if the stream errors.
+ * - Returns when the stream is done; throws if the stream errors. An exception
+ *   thrown by `onEvent` itself (e.g. a handler signalling a fatal server event)
+ *   propagates to the caller — only JSON parse failures are swallowed.
  */
 export async function readNdjsonStream<T>(
   body: ReadableStream<Uint8Array>,
@@ -49,24 +51,34 @@ export async function readNdjsonStream<T>(
         const line = buffer.slice(0, newlineIdx).trim();
         buffer = buffer.slice(newlineIdx + 1);
         if (!line) continue;
-        try {
-          await onEvent(JSON.parse(line) as T);
-        } catch (e) {
-          onError?.(line, e);
-        }
+        await emit<T>(line, onEvent, onError);
       }
     }
     // Flush any trailing line (no trailing newline)
     buffer += decoder.decode();
     const trailing = buffer.trim();
-    if (trailing) {
-      try {
-        await onEvent(JSON.parse(trailing) as T);
-      } catch (e) {
-        onError?.(trailing, e);
-      }
-    }
+    if (trailing) await emit<T>(trailing, onEvent, onError);
   } finally {
     reader.releaseLock();
   }
+}
+
+/**
+ * Parse one NDJSON line and hand it to `onEvent`. A JSON *parse* failure is
+ * reported via `onError` and skipped; an error thrown by `onEvent` propagates
+ * (so a handler can abort the stream on a fatal event).
+ */
+async function emit<T>(
+  line: string,
+  onEvent: (event: T) => void | Promise<void>,
+  onError?: (line: string, error: unknown) => void,
+): Promise<void> {
+  let event: T;
+  try {
+    event = JSON.parse(line) as T;
+  } catch (e) {
+    onError?.(line, e);
+    return;
+  }
+  await onEvent(event);
 }
