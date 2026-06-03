@@ -129,6 +129,16 @@ export function LiveSessionProvider({
     pushToast("Saldo verplaatst naar vandaag.", "good");
   }, [ledger, pushToast]);
 
+  // Fold the saved-minutes ledger into the day/week totals, so the progress
+  // meters' "remaining" reflects the local corrections. While an apply is
+  // running (its real timer is logging today's net into committed/elapsed),
+  // drop today's net to avoid transiently double-counting it.
+  const applyActive = engine.schedule?.reason === "apply";
+  const todayNetMin = ledger.netMinutes;
+  const weekNetMin = ledger.netInRange(live.weekStart, today);
+  const todayCorrectionSec = (applyActive ? 0 : todayNetMin) * 60;
+  const weekCorrectionSec = (applyActive ? weekNetMin - todayNetMin : weekNetMin) * 60;
+
   // Rebuilt each render (the timer ticks) — that's fine: only useLiveSession
   // consumers re-render, the page passed as `children` does not.
   const api: LiveSessionApi = {
@@ -145,6 +155,10 @@ export function LiveSessionProvider({
     todayEntries: live.todayEntries,
     todaySec: live.todaySec,
     weekSec: live.weekSec,
+    correctedTodaySec: live.todaySec + todayCorrectionSec,
+    correctedWeekSec: live.weekSec + weekCorrectionSec,
+    todayCorrectionSec,
+    weekCorrectionSec,
     stop: live.stop,
     clockIn: live.clockIn,
     clockOut: live.clockOut,

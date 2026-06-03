@@ -8,6 +8,7 @@ import {
   latestOtherNonZeroDay,
   makeEntry,
   netMinutes,
+  netMinutesInRange,
   removeEntry,
   withDay,
 } from "@/features/live/lib/ledger";
@@ -70,6 +71,13 @@ describe("ledger — file helpers", () => {
     expect(netMinutes(added.days["2026-06-03"])).toBe(7);
     const cleared = withDay(added, emptyDay("2026-06-03"));
     expect(cleared.days["2026-06-03"]).toBeUndefined();
+  });
+
+  it("netMinutesInRange sums nets across the inclusive date range", () => {
+    // 2026-06-01 → +10, 2026-06-02 → 0 (5 + −5).
+    expect(netMinutesInRange(file, "2026-06-01", "2026-06-07")).toBe(10);
+    expect(netMinutesInRange(file, "2026-06-02", "2026-06-07")).toBe(0); // excludes 06-01
+    expect(netMinutesInRange(file, "2026-07-01", "2026-07-07")).toBe(0); // no days in range
   });
 
   it("latestOtherNonZeroDay finds the most recent non-zero day other than today", () => {

@@ -1,4 +1,4 @@
-import { fmtDuration } from "@/lib/format";
+import { fmtDuration, fmtSignedDuration } from "@/lib/format";
 import {
   DAY_TARGET_SECONDS,
   WEEK_TARGET_SECONDS,
@@ -6,29 +6,41 @@ import {
 } from "@/features/live/lib/targets";
 
 export interface TargetsProps {
-  /** Live today seconds (committed + running). */
+  /** Today seconds the meter counts: committed + running + ledger correction. */
   readonly todaySec: number;
-  /** Live week-to-date seconds (committed + running). */
+  /** Week-to-date seconds: committed + running + ledger correction. */
   readonly weekSec: number;
+  /** The ledger's signed contribution folded into `todaySec` (for the hint). */
+  readonly todayCorrectionSec: number;
+  /** The ledger's signed contribution folded into `weekSec` (for the hint). */
+  readonly weekCorrectionSec: number;
 }
 
 /**
  * The two progress meters: how much is left to a full day (8u) and to the
- * full week (40u). Both tick live because their inputs include the running
- * timer's elapsed.
+ * full week (40u). Both tick live (their inputs include the running timer's
+ * elapsed) and include the saved-minutes ledger, so a manual correction moves
+ * the "remaining" immediately — annotated so its impact is visible.
  */
-export function Targets({ todaySec, weekSec }: TargetsProps) {
+export function Targets({
+  todaySec,
+  weekSec,
+  todayCorrectionSec,
+  weekCorrectionSec,
+}: TargetsProps) {
   return (
     <div className="grid grid-cols-2 gap-3 mb-5">
       <TargetBar
         label="Volledige dag"
         targetLabel="8u"
         progress={targetProgress(todaySec, DAY_TARGET_SECONDS)}
+        correctionSec={todayCorrectionSec}
       />
       <TargetBar
         label="Deze week"
         targetLabel="40u"
         progress={targetProgress(weekSec, WEEK_TARGET_SECONDS)}
+        correctionSec={weekCorrectionSec}
       />
     </div>
   );
@@ -38,10 +50,12 @@ function TargetBar({
   label,
   targetLabel,
   progress,
+  correctionSec,
 }: {
   label: string;
   targetLabel: string;
   progress: ReturnType<typeof targetProgress>;
+  correctionSec: number;
 }) {
   const headline = progress.reached
     ? `✓ ${label} gehaald`
@@ -72,6 +86,15 @@ function TargetBar({
           style={{ width: `${progress.pct}%` }}
         />
       </div>
+      {correctionSec !== 0 ? (
+        <div className="mt-1.5 text-[11.5px] text-muted-soft tabular-nums">
+          incl.{" "}
+          <span className={correctionSec < 0 ? "text-bad" : "text-good"}>
+            {fmtSignedDuration(correctionSec)}
+          </span>{" "}
+          correctie
+        </div>
+      ) : null}
     </div>
   );
 }

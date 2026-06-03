@@ -128,7 +128,12 @@ export function TodayView({ canTrack, profile, weeks, onEnterKey, onSync }: Toda
             />
           )}
 
-          <Targets todaySec={s.todaySec} weekSec={s.weekSec} />
+          <Targets
+            todaySec={s.correctedTodaySec}
+            weekSec={s.correctedWeekSec}
+            todayCorrectionSec={s.todayCorrectionSec}
+            weekCorrectionSec={s.weekCorrectionSec}
+          />
 
           <StartTimer
             query={search.query}

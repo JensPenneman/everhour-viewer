@@ -27,8 +27,15 @@ export interface LiveSessionApi {
   readonly clock: ClockStatus | null;
   readonly clockControlUnavailable: boolean;
   readonly todayEntries: ReadonlyArray<LiveEntry>;
+  /** Tracked seconds (committed + running), before the ledger correction. */
   readonly todaySec: number;
   readonly weekSec: number;
+  /** Tracked seconds plus the saved-minutes ledger net (what the meters show). */
+  readonly correctedTodaySec: number;
+  readonly correctedWeekSec: number;
+  /** The ledger's signed contribution (seconds) folded into the totals above. */
+  readonly todayCorrectionSec: number;
+  readonly weekCorrectionSec: number;
   readonly stop: () => void;
   readonly clockIn: () => void;
   readonly clockOut: () => void;

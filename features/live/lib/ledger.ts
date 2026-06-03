@@ -13,6 +13,15 @@ export function netMinutes(day: DayLedger | undefined): number {
   return day.entries.reduce((acc, e) => acc + e.minutes, 0);
 }
 
+/** Net signed minutes across all days in the inclusive `[from, to]` date range. */
+export function netMinutesInRange(file: LedgerFile, from: string, to: string): number {
+  let sum = 0;
+  for (const [date, day] of Object.entries(file.days)) {
+    if (date >= from && date <= to) sum += netMinutes(day);
+  }
+  return sum;
+}
+
 /** Seconds an apply timer should run for a given net — only positive nets apply. */
 export function applyableSeconds(netMin: number): number {
   return netMin > 0 ? Math.round(netMin * 60) : 0;

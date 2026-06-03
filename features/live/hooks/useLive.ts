@@ -32,6 +32,8 @@ export interface LiveApi {
   /** Committed + live-running seconds for today / this week-to-date. */
   readonly todaySec: number;
   readonly weekSec: number;
+  /** Monday (local `YYYY-MM-DD`) of the ISO week containing today. */
+  readonly weekStart: string;
 
   readonly start: (taskId: string) => Promise<void>;
   readonly stop: () => Promise<void>;
@@ -196,6 +198,7 @@ export function useLive(userId: number | null, today: string, enabled = true): L
     todayEntries,
     todaySec: committedToday + elapsedSec,
     weekSec: committedWeek + elapsedSec,
+    weekStart,
     start,
     stop,
     clockIn,

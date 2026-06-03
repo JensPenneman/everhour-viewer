@@ -209,5 +209,10 @@ test.describe("Vandaag — scheduled transitions (mocked)", () => {
 
     // The ledger write must be reactively reflected in the saldo + an entry row.
     await expect(page.getByText("+15m").first()).toBeVisible({ timeout: 8_000 });
+
+    // …and it must move the day meter: 0 tracked + 15m correction → 7u 45m left,
+    // annotated so the correction's impact is visible.
+    await expect(page.getByText("Nog 7u 45m")).toBeVisible({ timeout: 8_000 });
+    await expect(page.getByText(/incl\./).first()).toBeVisible();
   });
 });

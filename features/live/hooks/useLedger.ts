@@ -15,6 +15,7 @@ import {
   latestOtherNonZeroDay,
   makeEntry,
   netMinutes as netMinutesOf,
+  netMinutesInRange,
   removeEntry,
   withDay,
 } from "../lib/ledger";
@@ -25,6 +26,8 @@ export interface LedgerApi {
   readonly netMinutes: number;
   /** Most recent earlier day with a non-zero balance (to surface a carry-over hint). */
   readonly carryover: DayLedger | null;
+  /** Net signed minutes across an inclusive date range (e.g. this week-to-date). */
+  readonly netInRange: (from: string, to: string) => number;
   /** Bank a signed manual correction (+ lost time / − over-logged). */
   readonly add: (minutes: number, note?: string) => void;
   readonly remove: (id: string) => void;
@@ -49,6 +52,10 @@ export function useLedger(today: string): LedgerApi {
   const day = useMemo(() => getDay(file, today), [file, today]);
   const net = useMemo(() => netMinutesOf(day), [day]);
   const carryover = useMemo(() => latestOtherNonZeroDay(file, today), [file, today]);
+  const netInRange = useCallback(
+    (from: string, to: string) => netMinutesInRange(file, from, to),
+    [file],
+  );
 
   const add = useCallback(
     (minutes: number, note = "") => {
@@ -96,6 +103,7 @@ export function useLedger(today: string): LedgerApi {
     entries: day.entries,
     netMinutes: net,
     carryover,
+    netInRange,
     add,
     remove,
     bookAuto,
