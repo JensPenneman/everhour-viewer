@@ -150,4 +150,29 @@ test.describe("Vandaag — scheduled transitions (mocked)", () => {
     await expect(page.getByText("Geen timer loopt")).toBeVisible({ timeout: 10_000 });
     await expect(page.getByText(/geboekt op/)).toBeVisible({ timeout: 10_000 });
   });
+
+  test("shows the running timer in the shell on other routes", async ({ page }) => {
+    await page.addInitScript(() => window.localStorage.clear());
+    await installMocks(page, /* startRunning */ false);
+    await gotoVandaag(page);
+
+    // Start a timer via the recent-task chip → the full hero shows on Vandaag.
+    await page
+      .getByRole("button", { name: /Mock task/ })
+      .first()
+      .click();
+    await expect(page.getByText("Loopt nu")).toBeVisible({ timeout: 10_000 });
+
+    // Navigate to the week view (client-side, provider stays mounted): the hero
+    // is gone but the compact shell strip surfaces the same running timer.
+    await page.getByRole("button", { name: /2026-W23/ }).click();
+    await expect(page.getByText("Loopt nu")).toBeHidden();
+    const strip = page.getByRole("status").filter({ hasText: "Loopt" });
+    await expect(strip).toBeVisible({ timeout: 10_000 });
+    await expect(strip.getByText(/Mock task/)).toBeVisible();
+
+    // Stop from the shell strip → it disappears.
+    await strip.getByRole("button", { name: "Stop" }).click();
+    await expect(strip).toBeHidden({ timeout: 10_000 });
+  });
 });

@@ -3,6 +3,7 @@
 import { usePathname } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { IntegrationsDialog, useDayEvents } from "@/features/events";
+import { LiveSessionProvider, ShellTimer } from "@/features/live";
 import {
   buildBackupFile,
   downloadBackup,
@@ -246,74 +247,78 @@ export function AppShell({ children }: { children: React.ReactNode }) {
 
   return (
     <ViewerProvider value={ctx}>
-      <div className="h-screen flex flex-col overflow-hidden bg-background">
-        <Header
-          profile={cache.profile}
-          weekCount={cache.weeks.length}
-          totalSeconds={cache.totalSeconds}
-          progress={sync.progress}
-          canSync={apiKey.canSync}
-          syncing={sync.active}
-          hasUserKey={apiKey.hasUserKey}
-          hasData={hasData}
-          fileInputRef={fileInputRef}
-          menuOpen={menuOpen}
-          onSync={onSync}
-          onForceSync={onForceSync}
-          onDownloadBackup={onDownloadBackup}
-          onOpenKeyDialog={openKeyDialog}
-          onOpenIntegrations={() => {
-            setMenuOpen(false);
-            setIntegrationsOpen(true);
-          }}
-          onClearCache={onClearCache}
-          onMenuToggle={() => setMenuOpen((o) => !o)}
-          onMenuClose={() => setMenuOpen(false)}
-          onLoadFiles={onLoadFiles}
-        />
-
-        {!online ? (
-          <div
-            role="status"
-            className="bg-warn-bg text-warn text-[12.5px] text-center px-4 py-1.5 border-b border-border"
-          >
-            Offline — je bekijkt gegevens uit de cache; live acties zijn nu niet beschikbaar.
-          </div>
-        ) : null}
-
-        <div className="flex flex-1 overflow-hidden">
-          <Sidebar
+      <LiveSessionProvider profile={cache.profile} canTrack={apiKey.canSync} pushToast={toastsPush}>
+        <div className="h-screen flex flex-col overflow-hidden bg-background">
+          <Header
             profile={cache.profile}
-            weeks={cache.sortedWeeks}
-            activeIso={effectiveActiveIso}
-            view={sidebarView}
-            onSelectToday={() => navigate(TODAY_HREF)}
-            onSelectWeek={(iso) => navigate(weekHref(iso))}
-            onSelectProfile={() => navigate(PROFILE_HREF)}
+            weekCount={cache.weeks.length}
+            totalSeconds={cache.totalSeconds}
+            progress={sync.progress}
+            canSync={apiKey.canSync}
+            syncing={sync.active}
+            hasUserKey={apiKey.hasUserKey}
+            hasData={hasData}
+            fileInputRef={fileInputRef}
+            menuOpen={menuOpen}
+            onSync={onSync}
+            onForceSync={onForceSync}
+            onDownloadBackup={onDownloadBackup}
+            onOpenKeyDialog={openKeyDialog}
+            onOpenIntegrations={() => {
+              setMenuOpen(false);
+              setIntegrationsOpen(true);
+            }}
+            onClearCache={onClearCache}
+            onMenuToggle={() => setMenuOpen((o) => !o)}
+            onMenuClose={() => setMenuOpen(false)}
+            onLoadFiles={onLoadFiles}
           />
 
-          <main className="vt-main flex-1 overflow-y-auto px-9 py-7">
-            {cache.hydrated ? children : null}
-          </main>
+          {!online ? (
+            <div
+              role="status"
+              className="bg-warn-bg text-warn text-[12.5px] text-center px-4 py-1.5 border-b border-border"
+            >
+              Offline — je bekijkt gegevens uit de cache; live acties zijn nu niet beschikbaar.
+            </div>
+          ) : null}
+
+          <ShellTimer hidden={route.view === "today"} />
+
+          <div className="flex flex-1 overflow-hidden">
+            <Sidebar
+              profile={cache.profile}
+              weeks={cache.sortedWeeks}
+              activeIso={effectiveActiveIso}
+              view={sidebarView}
+              onSelectToday={() => navigate(TODAY_HREF)}
+              onSelectWeek={(iso) => navigate(weekHref(iso))}
+              onSelectProfile={() => navigate(PROFILE_HREF)}
+            />
+
+            <main className="vt-main flex-1 overflow-y-auto px-9 py-7">
+              {cache.hydrated ? children : null}
+            </main>
+          </div>
+
+          <ToastTray toasts={toasts.toasts} />
+          <ServiceWorkerManager onUpdate={onSwUpdate} />
+
+          <KeyDialog
+            open={keyDialogOpen}
+            hasEnvKey={apiKey.hasEnvKey === true}
+            onClose={() => setKeyDialogOpen(false)}
+            onSubmit={onSubmitKey}
+          />
+
+          <IntegrationsDialog
+            open={integrationsOpen}
+            onClose={() => setIntegrationsOpen(false)}
+            onProvidersChanged={refreshProviders}
+            onToast={onToastFromDialog}
+          />
         </div>
-
-        <ToastTray toasts={toasts.toasts} />
-        <ServiceWorkerManager onUpdate={onSwUpdate} />
-
-        <KeyDialog
-          open={keyDialogOpen}
-          hasEnvKey={apiKey.hasEnvKey === true}
-          onClose={() => setKeyDialogOpen(false)}
-          onSubmit={onSubmitKey}
-        />
-
-        <IntegrationsDialog
-          open={integrationsOpen}
-          onClose={() => setIntegrationsOpen(false)}
-          onProvidersChanged={refreshProviders}
-          onToast={onToastFromDialog}
-        />
-      </div>
+      </LiveSessionProvider>
     </ViewerProvider>
   );
 }

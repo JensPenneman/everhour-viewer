@@ -88,7 +88,7 @@ export function RunningTimer({
 }
 
 /** Live "H:MM:SS" for the running elapsed — seconds matter while it ticks. */
-function fmtClock(totalSec: number): string {
+export function fmtClock(totalSec: number): string {
   const s = Math.max(0, Math.floor(totalSec));
   const h = Math.floor(s / 3600);
   const m = Math.floor((s % 3600) / 60);
