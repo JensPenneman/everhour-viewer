@@ -62,7 +62,7 @@ jobs:
           cache: npm
       - run: npm ci
       - id: chrome
-        uses: browser-actions/setup-chrome@v1
+        uses: browser-actions/setup-chrome@v2
         with:
           chrome-version: stable
       # Builds, starts the prod server, audits, and fails unless every

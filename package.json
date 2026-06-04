@@ -5,7 +5,7 @@
   "description": "Local NextJS viewer for Everhour timesheets — bring-your-own-key, delta-streaming sync, exportable backups.",
   "license": "MIT",
   "engines": {
-    "node": ">=20.0.0"
+    "node": ">=24.0.0"
   },
   "scripts": {
     "dev": "next dev",
@@ -36,9 +36,9 @@
     "@trpc/server": "^11.17.0",
     "@trpc/tanstack-react-query": "^11.17.0",
     "date-fns": "^4.4.0",
-    "next": "16.2.6",
-    "react": "19.2.6",
-    "react-dom": "19.2.6",
+    "next": "16.2.7",
+    "react": "19.2.7",
+    "react-dom": "19.2.7",
     "server-only": "^0.0.1",
     "zod": "^4.4.3"
   },
@@ -46,13 +46,13 @@
     "@playwright/test": "^1.60.0",
     "@tailwindcss/postcss": "^4",
     "@tanstack/react-query-devtools": "^5.100.14",
-    "@types/node": "^25.9.1",
+    "@types/node": "^24",
     "@types/react": "^19",
     "@types/react-dom": "^19",
     "@vitest/coverage-v8": "^4.1.7",
     "chrome-launcher": "^1.2.1",
     "eslint": "^9.39.4",
-    "eslint-config-next": "16.2.6",
+    "eslint-config-next": "16.2.7",
     "eslint-config-prettier": "^10.1.8",
     "husky": "^9.1.7",
     "jsdom": "^29.1.1",
