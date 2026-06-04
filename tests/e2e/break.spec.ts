@@ -94,10 +94,23 @@ async function installMocks(page: Page, startRunning: boolean): Promise<void> {
   });
 }
 
-/** Seed a single pending transition that is (almost) immediately due. */
+/**
+ * How long after page-load a seeded transition becomes due.
+ *
+ * `fireAt` is anchored to page-load (the only clock `addInitScript` can read),
+ * but the pending banner only mounts once the sync completes and the profile
+ * loads — several seconds later under CI. So this delay must comfortably exceed
+ * boot + sync, or the schedule comes due and fires (clearing the banner) before
+ * it ever renders, and the "pending" assertions miss it. The original 600 ms
+ * lost that race in CI. It must also stay well under the post-fire assertion
+ * budget below so the auto-fire is still observed in time.
+ */
+const SCHEDULE_FIRE_DELAY_MS = 6_000;
+
+/** Seed a single pending transition that becomes due a few seconds after load. */
 async function seedSchedule(page: Page, kind: "start" | "stop", reason: "break" | "apply") {
   await page.addInitScript(
-    ([k, r]) => {
+    ([k, r, delayMs]) => {
       window.localStorage.clear();
       const now = Date.now();
       window.localStorage.setItem(
@@ -108,13 +121,13 @@ async function seedSchedule(page: Page, kind: "start" | "stop", reason: "break" 
             kind: k,
             reason: r,
             task: { id: "li:test", name: "Mock task", linearKey: "LS-1", url: null },
-            fireAt: now + 600,
+            fireAt: now + delayMs,
             createdAt: now,
           },
         }),
       );
     },
-    [kind, reason] as const,
+    [kind, reason, SCHEDULE_FIRE_DELAY_MS] as const,
   );
 }
 
@@ -134,8 +147,8 @@ test.describe("Vandaag — scheduled transitions (mocked)", () => {
     await expect(page.getByText("Pauze — hervat automatisch")).toBeVisible();
 
     // The engine fires: the timer starts and the resume toast appears.
-    await expect(page.getByText("Loopt nu")).toBeVisible({ timeout: 10_000 });
-    await expect(page.getByText(/Timer hervat/)).toBeVisible({ timeout: 10_000 });
+    await expect(page.getByText("Loopt nu")).toBeVisible({ timeout: 12_000 });
+    await expect(page.getByText(/Timer hervat/)).toBeVisible({ timeout: 12_000 });
   });
 
   test("auto-stops the apply timer when its booking comes due", async ({ page }) => {
@@ -147,8 +160,8 @@ test.describe("Vandaag — scheduled transitions (mocked)", () => {
     await expect(page.getByText("Bezig met boeken")).toBeVisible();
 
     // The engine fires: the timer stops and the booked toast appears.
-    await expect(page.getByText("Geen timer loopt")).toBeVisible({ timeout: 10_000 });
-    await expect(page.getByText(/geboekt op/)).toBeVisible({ timeout: 10_000 });
+    await expect(page.getByText("Geen timer loopt")).toBeVisible({ timeout: 12_000 });
+    await expect(page.getByText(/geboekt op/)).toBeVisible({ timeout: 12_000 });
   });
 
   test("shows the running timer in the shell on other routes", async ({ page }) => {
