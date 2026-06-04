@@ -1,6 +1,9 @@
 import "server-only";
+import { statusFromHistory, timesheetId } from "@/lib/everhour/submit";
 import { sanitizeProfile } from "@/lib/everhour/transforms";
 import type {
+  ApprovalEvent,
+  ApprovalStatus,
   ClockStatus,
   EverhourProfile,
   LiveEntry,
@@ -88,6 +91,68 @@ export function fetchWeekEntries(opts: FetchWeekEntriesOptions): Promise<Readonl
     signal: opts.signal,
     params: { from: opts.from, to: opts.to },
   });
+}
+
+/** Raw `history` record on a `TimesheetApproval` response. */
+interface RawApprovalHistory {
+  readonly action?: string;
+  readonly createdAt?: string;
+}
+
+/** Raw `TimesheetApproval` returned by the approval endpoints. */
+interface RawApproval {
+  readonly history?: ReadonlyArray<RawApprovalHistory>;
+}
+
+export interface SubmitWeekOptions {
+  readonly key: string;
+  readonly userId: number;
+  readonly weekId: number;
+  readonly signal?: AbortSignal;
+}
+
+/** The sanitised approval state after a submission, matching `WeekRecord.approval`. */
+export interface SubmittedApproval {
+  readonly status: ApprovalStatus;
+  readonly submittedAt: string | null;
+  readonly history: ReadonlyArray<ApprovalEvent>;
+}
+
+/**
+ * Submit (commit) a week's timesheet for approval, mirroring Everhour's own
+ * "Submit for approval" action.
+ *
+ * Calls `POST /timesheets/{timesheetId}/approval`, where `timesheetId` is the
+ * composite `{userId}{weekId}`. The body is left empty — no comment, no
+ * explicit reviewer (Everhour routes to the configured approver), and we don't
+ * trigger a notification from this app. The response is the updated
+ * `TimesheetApproval`; we sanitise its `history` into the same shape the cache
+ * stores so the caller can reflect the new status without a full re-sync.
+ *
+ * As a write this is single-attempt (see {@link everhourFetch}); a 4xx
+ * (e.g. an API key without timesheet-approval permission) surfaces to the
+ * caller as an {@link EverhourError}.
+ */
+export async function submitWeekForApproval(opts: SubmitWeekOptions): Promise<SubmittedApproval> {
+  const id = timesheetId(opts.userId, opts.weekId);
+  const raw = await everhourFetch<RawApproval>(`/timesheets/${id}/approval`, {
+    key: opts.key,
+    method: "POST",
+    body: {},
+    signal: opts.signal,
+  });
+
+  const history: ReadonlyArray<ApprovalEvent> = (raw?.history ?? []).map((h) => ({
+    action: h.action ?? "",
+    createdAt: h.createdAt ?? "",
+  }));
+  const submittedAt = history.find((h) => h.action === "submitted")?.createdAt ?? null;
+
+  return {
+    status: statusFromHistory(history, "pending"),
+    submittedAt,
+    history,
+  };
 }
 
 /* ────────────────────────────────────────────────────────────────────────── */

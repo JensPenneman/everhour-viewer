@@ -8,6 +8,7 @@ import {
   searchTasksService,
   startTimerForTask,
   stopRunningTimer,
+  submitWeek,
 } from "@/server/services";
 import {
   clockActionSchema,
@@ -16,6 +17,7 @@ import {
   timeQuerySchema,
   timerStartSchema,
 } from "@/server/validation/live";
+import { submitWeekSchema } from "@/server/validation/timesheet";
 import { keyedProcedure, publicProcedure, router } from "./trpc";
 
 /**
@@ -67,6 +69,15 @@ export const appRouter = router({
       .input(timeQuerySchema)
       .query(({ ctx, input, signal }) =>
         getTimeRange(ctx.key, input.userId, input.from, input.to, signal),
+      ),
+  }),
+
+  timesheet: router({
+    /** Submit (commit) a week's timesheet for approval. */
+    submit: keyedProcedure
+      .input(submitWeekSchema)
+      .mutation(({ ctx, input, signal }) =>
+        submitWeek(ctx.key, input.userId, input.weekId, signal),
       ),
   }),
 });

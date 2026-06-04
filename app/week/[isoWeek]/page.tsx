@@ -8,7 +8,7 @@ import { useViewer } from "@/shared/components";
 /** `/week/[isoWeek]` — the week breakdown for the ISO week in the URL. */
 export default function WeekPage() {
   const { isoWeek } = useParams<{ isoWeek: string }>();
-  const { cache, eventsForDate, navigate, onAddEvent, onRemoveEvent } = useViewer();
+  const { cache, eventsForDate, navigate, onAddEvent, onRemoveEvent, pushToast } = useViewer();
 
   const week = cache.sortedWeeks.find((w) => w.week.isoWeek === isoWeek);
   if (!week) {
@@ -22,6 +22,7 @@ export default function WeekPage() {
       onAddEvent={onAddEvent}
       onRemoveEvent={onRemoveEvent}
       onOpenDay={(date) => navigate(dayHref(isoWeek, date))}
+      pushToast={pushToast}
     />
   );
 }

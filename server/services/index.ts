@@ -3,3 +3,4 @@ export { getTimer, startTimerForTask, stopRunningTimer } from "./timer";
 export { searchTasksService } from "./tasks";
 export { getClock, clock } from "./clock";
 export { getTimeRange } from "./time";
+export { submitWeek } from "./timesheet";

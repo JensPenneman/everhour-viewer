@@ -5,10 +5,12 @@ import { SectionTitle, StatusPill } from "@/shared/ui";
 import type { DayEvent, DayEventKind } from "@/lib/events";
 import type { WeekRecord } from "@/lib/everhour";
 import { fmtDateFull } from "@/lib/format";
+import type { ToastKind } from "@/shared/hooks";
 import { DailyChart } from "./DailyChart";
 import { DayBreakdown } from "./DayBreakdown";
 import { KpiCards } from "./KpiCards";
 import { TaskTable } from "./TaskTable";
+import { WeekSubmit } from "./WeekSubmit";
 import { aggregateTasks, fullWeekDays } from "./utils";
 
 export interface WeekDetailProps {
@@ -21,6 +23,8 @@ export interface WeekDetailProps {
   readonly onRemoveEvent?: (id: string) => void;
   /** Open the dedicated day-detail view for a date. */
   readonly onOpenDay?: (date: string) => void;
+  /** Push a toast into the shell's tray (for the submit-week result). */
+  readonly pushToast?: (message: string, kind?: ToastKind) => void;
 }
 
 export function WeekDetail({
@@ -29,6 +33,7 @@ export function WeekDetail({
   onAddEvent,
   onRemoveEvent,
   onOpenDay,
+  pushToast,
 }: WeekDetailProps) {
   const days = useMemo(() => fullWeekDays(week), [week]);
   const tasks = useMemo(() => aggregateTasks(days), [days]);
@@ -40,6 +45,9 @@ export function WeekDetail({
           {week.week.isoWeek}
         </h2>
         <StatusPill status={week.approval.status} />
+        <div className="ml-auto self-center">
+          <WeekSubmit week={week} pushToast={pushToast} />
+        </div>
       </div>
       <div className="text-muted text-[13px] mb-6">
         {fmtDateFull(week.week.from)} t/m {fmtDateFull(week.week.to)}

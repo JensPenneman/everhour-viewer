@@ -12,6 +12,7 @@ export {
   fetchTeamMembers,
   fetchTimesheetList,
   fetchWeekEntries,
+  submitWeekForApproval,
   getCurrentTimer,
   startTimer,
   stopTimer,
@@ -21,4 +22,6 @@ export {
   fetchTimeRange,
   type FetchTimesheetListOptions,
   type FetchWeekEntriesOptions,
+  type SubmitWeekOptions,
+  type SubmittedApproval,
 } from "./api";

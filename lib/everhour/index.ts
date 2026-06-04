@@ -9,6 +9,7 @@
 
 export { EverhourError } from "./errors";
 export { isoWeekLabel } from "./iso-week";
+export { canSubmitWeek, statusFromHistory, timesheetId, withSubmittedApproval } from "./submit";
 export { sanitizeProfile, buildWeek } from "./transforms";
 export { WEEK_SCHEMA_VERSION } from "./types";
 export type {
