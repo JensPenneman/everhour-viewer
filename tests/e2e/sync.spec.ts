@@ -1,178 +1,70 @@
-import { expect, test, type Route } from "@playwright/test";
-import { mockTrpc } from "./_trpc";
-
-const IDLE_TIMER = { running: false, durationSeconds: 0, startedAt: null, task: null };
-
-/** tRPC mocks shared by every sync test: env key present + idle live data, so
- * the post-sync Today view never hits the real backend. */
-async function mockLiveTrpc(page: Parameters<typeof mockTrpc>[0]): Promise<void> {
-  await mockTrpc(page, {
-    "system.capabilities": () => ({ hasEnvKey: true }),
-    "timer.current": () => IDLE_TIMER,
-    "clock.today": () => ({ date: "2026-05-22", clockedIn: false, clockIn: null, clockOut: null }),
-    "time.range": () => [],
-    "tasks.search": () => [],
-  });
-}
+import { expect, test } from "@playwright/test";
+import {
+  clearStorage,
+  gotoWeek,
+  makeWeek,
+  mockLive,
+  mockSync,
+  sidebar,
+  startSync,
+} from "./support";
 
 /**
- * Sync E2E tests run against a mocked /api/sync endpoint — we don't want
- * to hammer the real Everhour API from CI or to be sensitive to the
- * current week's hours.
- *
- * Each test installs a route handler that responds with deterministic
- * NDJSON, then drives the UI as the streaming consumer would see it.
+ * Sync flow against a mocked `/api/sync` — deterministic NDJSON, so CI never
+ * hammers the real Everhour API or depends on the current week's hours. Each
+ * test installs its own stream, then drives the UI as the consumer sees it.
  */
-
-interface SyncCounts {
-  new: number;
-  updated: number;
-  skipped: number;
-  totalWeeks: number;
-}
-
-function mockSyncResponse(weeks: number, counts: SyncCounts): string {
-  const lines: string[] = [];
-  lines.push(
-    JSON.stringify({
-      type: "profile",
-      profile: {
-        schemaVersion: 1,
-        exportedAt: "2026-05-22T14:00:00",
-        id: 1,
-        name: "Test User",
-        email: "test@example.com",
-        role: "member",
-        headline: "Engineer",
-        status: "active",
-        avatarUrl: null,
-        avatarUrlLarge: null,
-        timezone: 0,
-        capacity: 40,
-        cost: 0,
-        costHistory: null,
-        createdAt: "2025-01-01",
-        groups: [],
-      },
-    }),
-  );
-  lines.push(JSON.stringify({ type: "plan", total: weeks, toFetch: weeks, toSkip: 0 }));
-  for (let i = 0; i < weeks; i++) {
-    const isoWeek = `2026-W${String(20 - i).padStart(2, "0")}`;
-    lines.push(
-      JSON.stringify({
-        type: "week",
-        current: i + 1,
-        total: weeks,
-        kind: "new",
-        week: {
-          schemaVersion: 2,
-          exportedAt: "2026-05-22T14:00:00",
-          user: { id: 1, name: "Test User", email: "test@example.com" },
-          week: {
-            isoWeek,
-            weekId: 2520 - i,
-            from: "2026-05-11",
-            to: "2026-05-17",
-          },
-          approval: { status: "pending", submittedAt: null, history: [] },
-          totals: { seconds: 28_800, hours: 8 },
-          days: [
-            {
-              date: "2026-05-11",
-              weekday: "Monday",
-              totalSeconds: 28_800,
-              entries: [
-                {
-                  task: {
-                    id: "li:test",
-                    name: "Mock task",
-                    linearKey: "LS-1",
-                    url: null,
-                    labels: [],
-                  },
-                  seconds: 28_800,
-                  lockReasons: [],
-                },
-              ],
-            },
-          ],
-        },
-      }),
-    );
-  }
-  lines.push(JSON.stringify({ type: "done", counts }));
-  return lines.join("\n") + "\n";
-}
-
-async function mockSync(route: Route, weeks: number, counts: SyncCounts): Promise<void> {
-  await route.fulfill({
-    status: 200,
-    headers: { "Content-Type": "application/x-ndjson" },
-    body: mockSyncResponse(weeks, counts),
-  });
-}
-
 test.describe("Sync flow (mocked)", () => {
   test.beforeEach(async ({ page }) => {
-    await page.addInitScript(() => window.localStorage.clear());
-    await mockLiveTrpc(page);
+    await clearStorage(page);
+    await mockLive(page);
   });
 
   test("streams weeks and shows a success toast", async ({ page }) => {
-    await page.route("**/api/sync", async (route) => {
-      await mockSync(route, 3, { new: 3, updated: 0, skipped: 0, totalWeeks: 3 });
-    });
-
-    await page.goto("/");
-    await page.getByRole("button", { name: "Synchroniseer", exact: true }).first().click();
+    await mockSync(page, { weeks: 3 });
+    await startSync(page);
 
     await expect(page.getByRole("status").filter({ hasText: /Sync klaar/ })).toBeVisible({
       timeout: 10_000,
     });
 
-    // Sidebar should reflect 3 weeks
-    const sidebar = page.getByRole("complementary", { name: "Navigatie" });
-    await expect(sidebar.getByText("2026-W20", { exact: true })).toBeVisible();
-    await expect(sidebar.getByText("2026-W19", { exact: true })).toBeVisible();
-    await expect(sidebar.getByText("2026-W18", { exact: true })).toBeVisible();
+    const nav = sidebar(page);
+    await expect(nav.getByText("2026-W20", { exact: true })).toBeVisible();
+    await expect(nav.getByText("2026-W19", { exact: true })).toBeVisible();
+    await expect(nav.getByText("2026-W18", { exact: true })).toBeVisible();
   });
 
   test("delta sync skips already-known weeks", async ({ page }) => {
-    // Seed an approved week in localStorage.
-    await page.addInitScript(() => {
-      window.localStorage.setItem(
-        "everhour_viewer_data_v1",
-        JSON.stringify({
-          profile: null,
-          weeks: [
-            {
-              schemaVersion: 2,
-              exportedAt: "2026-05-22T14:00:00",
-              user: { id: 1, name: "T", email: "t@example.com" },
-              week: {
-                isoWeek: "2026-W20",
-                weekId: 2520,
-                from: "2026-05-11",
-                to: "2026-05-17",
-              },
-              approval: { status: "approved", submittedAt: null, history: [] },
-              totals: { seconds: 0, hours: 0 },
-              days: [],
-            },
-          ],
+    // Seed a known week in the cache, so the sync request carries it as a
+    // knownWeek for the server to skip.
+    const cached = JSON.stringify({
+      profile: null,
+      weeks: [
+        makeWeek({
+          isoWeek: "2026-W20",
+          weekId: 2520,
+          from: "2026-05-11",
+          to: "2026-05-17",
+          status: "approved",
+          seconds: 0,
+          withEntry: false,
         }),
-      );
+      ],
     });
+    await page.addInitScript((seed) => {
+      window.localStorage.setItem("everhour_viewer_data_v1", seed);
+    }, cached);
 
     let postBody: { knownWeeks?: { isoWeek: string }[] } | undefined;
-    await page.route("**/api/sync", async (route) => {
-      postBody = route.request().postDataJSON();
-      await mockSync(route, 0, { new: 0, updated: 0, skipped: 1, totalWeeks: 1 });
+    await mockSync(page, {
+      weeks: 0,
+      counts: { new: 0, updated: 0, skipped: 1, totalWeeks: 1 },
+      capture: (body) => {
+        postBody = body as typeof postBody;
+      },
     });
 
-    await page.goto("/");
-    await page.getByRole("button", { name: "Synchroniseer", exact: true }).first().click();
+    await startSync(page);
 
     await expect(page.getByRole("status").filter({ hasText: /Sync klaar/ })).toBeVisible({
       timeout: 10_000,
@@ -183,19 +75,10 @@ test.describe("Sync flow (mocked)", () => {
   });
 
   test("selecting a week navigates to its real route", async ({ page }) => {
-    await page.route("**/api/sync", async (route) => {
-      await mockSync(route, 3, { new: 3, updated: 0, skipped: 0, totalWeeks: 3 });
-    });
-
-    await page.goto("/");
-    await page.getByRole("button", { name: "Synchroniseer", exact: true }).first().click();
-
-    const sidebar = page.getByRole("complementary", { name: "Navigatie" });
-    await sidebar.getByText("2026-W20", { exact: true }).click();
-
-    // The Next router owns the URL now — the week is a real route segment,
-    // and its page renders from the route param.
-    await expect(page).toHaveURL(/\/week\/2026-W20$/);
+    await mockSync(page, { weeks: 3 });
+    // The Next router owns the URL — the week is a real route segment whose
+    // page renders from the route param.
+    await gotoWeek(page, "2026-W20");
     await expect(page.getByRole("main").getByText("Mock task").first()).toBeVisible();
   });
 });

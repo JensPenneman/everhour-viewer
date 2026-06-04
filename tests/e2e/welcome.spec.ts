@@ -1,11 +1,9 @@
 import { expect, test } from "@playwright/test";
+import { clearStorage } from "./support";
 
 test.describe("Welcome screen", () => {
   test.beforeEach(async ({ page }) => {
-    // Start with a clean browser state every time.
-    await page.addInitScript(() => {
-      window.localStorage.clear();
-    });
+    await clearStorage(page);
   });
 
   test("renders the onboarding card", async ({ page }) => {
